@@ -79,7 +79,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       rolling: true, // Force cookie to be set on every response
       name: 'linkybecky.sid', // Custom cookie name to avoid conflicts
       cookie: { 
-        // Always use secure cookies when in production
+        // Secure cookies are required when sameSite is 'none' (in production)
         secure: process.env.NODE_ENV === 'production', 
         httpOnly: true, // Prevent client-side JS from reading the cookie
         // Important: 'none' is needed for cross-domain cookies but requires secure: true
@@ -717,6 +717,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Simple status endpoint to check if API is online
+  app.get("/api/status", (req, res) => {
+    // Use our debug utility to show request details
+    dumpRequestInfo(req, 'STATUS CHECK');
+    
+    res.json({
+      status: "online",
+      time: new Date().toISOString(),
+      env: process.env.NODE_ENV || "development",
+      sessionId: req.sessionID || null,
+      cookiePresent: !!req.headers.cookie
+    });
+  });
+  
   // Username availability check
   app.get("/api/username/availability/:username", async (req, res) => {
     try {

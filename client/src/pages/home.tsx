@@ -86,7 +86,29 @@ export default function Home() {
   };
 
   const handleClaimPage = async () => {
+    console.log("Checking username availability for:", username);
+    
+    // First hit the status endpoint to verify basic connectivity and cookies
+    try {
+      const statusResponse = await fetch('/api/status', {
+        credentials: 'include',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      
+      console.log("Status API response status:", statusResponse.status);
+      const statusData = await statusResponse.json();
+      console.log("Status API response:", statusData);
+    } catch (error) {
+      console.error("Error checking API status:", error);
+    }
+    
+    // Now proceed with username check
     const isAvailable = await checkUsernameAvailability();
+    console.log("Username availability result:", isAvailable);
     
     if (isAvailable) {
       // Store the username in sessionStorage to retrieve after OAuth
