@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { storage } from '../storage';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'development-jwt-secret';
+const JWT_SECRET = process.env.JWT_SECRET || 'linky-becky-secret-key';
 
 // Generate an authentication token for a user
 export function generateToken(user: { id: number; email: string; username: string }): string {

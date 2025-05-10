@@ -206,7 +206,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const token = authHeader.split(' ')[1];
       
       try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default_jwt_secret') as any;
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'linky-becky-secret-key') as any;
         console.log("[express] Token auth check - Decoded token:", decoded);
         
         if (typeof decoded === 'object' && decoded.id) {

@@ -14,7 +14,7 @@ import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { storage } from "./storage";
 
 // JWT functions
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'linky-becky-secret-key';
 
 function generateToken(user: { id: number; email: string; username: string }): string {
   return jwt.sign(
