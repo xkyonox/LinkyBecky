@@ -56,6 +56,8 @@ export default function Home() {
     setIsChecking(true);
     
     try {
+      console.log(`🔍 Checking availability for username: ${username}`);
+      
       const response = await fetch(`/api/username/availability/${username}`, {
         credentials: 'include', // Add this to ensure cookies are sent
         headers: {
@@ -64,9 +66,30 @@ export default function Home() {
           'Expires': '0'
         }
       });
-      const data = await response.json();
       
-      console.log('Username check response:', data);
+      // Log detailed response information
+      console.log(`✅ Username check response status: ${response.status}`);
+      console.log(`✅ Response headers:`, Object.fromEntries([...response.headers.entries()]));
+      
+      // Check if the response is successful
+      if (!response.ok) {
+        console.error(`❌ Username availability check failed with status: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`❌ Error response: ${errorText}`);
+        throw new Error(`Server error: ${response.status}`);
+      }
+      
+      // Parse response as JSON
+      let data;
+      try {
+        data = await response.json();
+        console.log('✅ Username check response data:', data);
+      } catch (parseError) {
+        console.error('❌ Failed to parse JSON response:', parseError);
+        const rawText = await response.clone().text();
+        console.error('Raw response text:', rawText);
+        throw new Error('Invalid response format');
+      }
       
       setUsernameMessage({
         type: data.available ? "success" : "error",
@@ -75,6 +98,8 @@ export default function Home() {
       
       return data.available;
     } catch (error) {
+      console.error('❌ Username availability check error:', error);
+      
       setUsernameMessage({
         type: "error",
         message: "Error checking username. Please try again."
