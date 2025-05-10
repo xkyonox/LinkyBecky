@@ -127,7 +127,13 @@ router.post('/login', async (req: Request, res: Response) => {
       username: user.username
     });
 
-    // Return user data and token
+    // If this is a browser request with Accept header that includes text/html,
+    // redirect to the client with token in query params
+    if (req.headers.accept?.includes('text/html')) {
+      return res.redirect(`/api/auth/callback-redirect?token=${encodeURIComponent(token)}&username=${encodeURIComponent(user.username)}`);
+    }
+    
+    // For API clients, return JSON response
     return res.json({
       token,
       user: {
@@ -289,15 +295,18 @@ router.post('/complete-google-signup', async (req: Request, res: Response) => {
       username: user.username
     });
 
-    // Return user data and token
-    return res.json({
+    // Redirect to client with token
+    return res.redirect(`/api/auth/callback-redirect?token=${encodeURIComponent(token)}&username=${encodeURIComponent(user.username)}`);
+    
+    // Alternative JSON response for non-browser clients
+    /* return res.json({
       token,
       user: {
         id: user.id,
         username: user.username,
         email: user.email
       }
-    });
+    }); */
   } catch (error) {
     console.error('Error in /auth/complete-google-signup:', error);
     return res.status(500).json({ error: 'Server error' });
