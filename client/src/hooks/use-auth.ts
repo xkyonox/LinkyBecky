@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/lib/store";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export function useAuth() {
   const { user, token, isAuthenticated, setAuth, clearAuth } = useAuthStore();
@@ -121,30 +121,50 @@ export function useAuth() {
   // Logout function
   const logout = async () => {
     try {
-      // Call the logout API endpoint
+      // Log the logout attempt
+      console.log("Initiating logout process...");
+      
+      // Call the logout API endpoint to destroy the server session
       await apiRequest("POST", "/api/auth/logout", {});
+      console.log("Server logout API called successfully");
       
       // Clear the auth state from Zustand store
       clearAuth();
+      console.log("Auth state cleared from Zustand store");
       
-      // Clear any other potential auth data in localStorage
-      localStorage.removeItem('auth-storage');
+      // Clear various storages that might contain auth data
+      try {
+        localStorage.removeItem('auth-storage');
+        localStorage.removeItem('query-cache');
+        sessionStorage.removeItem('pendingUsername');
+        
+        // Clear all cookies by setting expired dates
+        document.cookie.split(";").forEach(cookie => {
+          const name = cookie.split("=")[0].trim();
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+        });
+        
+        console.log("Local storage, session storage and cookies cleared");
+      } catch (storageError) {
+        console.error("Error clearing storages:", storageError);
+      }
       
-      // Clear query cache to prevent stale data
-      window.location.href = '/';
+      // Invalidate all queries in the query client cache
+      queryClient.invalidateQueries();
+      queryClient.clear();
+      console.log("Query client cache cleared");
       
       return { success: true };
     } catch (error) {
       console.error("Logout error:", error);
-      // Clear auth anyway
+      
+      // Even if API call fails, try to clean up locally
       clearAuth();
       localStorage.removeItem('auth-storage');
-      
-      // Force navigation to home page even on error
-      window.location.href = '/';
+      queryClient.clear();
       
       return {
-        success: true,
+        success: true, // Return success anyway so UI can proceed with redirect
         error: error instanceof Error ? error.message : "An error occurred during logout"
       };
     }

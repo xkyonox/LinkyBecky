@@ -555,10 +555,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/auth/logout", (req, res) => {
+    console.log("🔍 Logout request received");
+    console.log("Session before logout:", req.session);
+    
+    // Clear all session data
+    req.session.userId = undefined;
+    if (req.session.passport) {
+      delete req.session.passport.user;
+      delete req.session.passport;
+    }
+    
+    // Destroy the session completely
     req.session.destroy((err) => {
       if (err) {
+        console.error("❌ Error destroying session:", err);
         return res.status(500).json({ message: "Failed to logout" });
       }
+      
+      // Clear the session cookie by setting an expired cookie with the same name
+      res.clearCookie('linkybecky.sid', {
+        path: '/',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+      });
+      
+      console.log("✅ Session successfully destroyed");
       res.json({ message: "Logged out successfully" });
     });
   });

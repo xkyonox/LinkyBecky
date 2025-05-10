@@ -21,19 +21,45 @@ export function Header() {
   const { toast } = useToast();
 
   const handleLogout = async () => {
-    const result = await logout();
+    // Show loading toast
+    toast({
+      title: "Logging out",
+      description: "Please wait...",
+    });
     
-    if (result.success) {
-      toast({
-        title: "Logged out",
-        description: "You have been successfully logged out.",
-      });
-    } else {
+    try {
+      // Call the logout function from useAuth
+      const result = await logout();
+      
+      if (result.success) {
+        toast({
+          title: "Logged out",
+          description: "You have been successfully logged out.",
+        });
+        
+        // Force navigation to home page
+        window.location.href = '/';
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "There was an error logging out.",
+          variant: "destructive",
+        });
+        
+        // Even if there's an error, try to navigate home
+        window.location.href = '/';
+      }
+    } catch (error) {
+      console.error("Error during logout:", error);
+      
       toast({
         title: "Error",
-        description: result.error || "There was an error logging out.",
+        description: "There was an unexpected error during logout.",
         variant: "destructive",
       });
+      
+      // Force navigation to home page even on exception
+      window.location.href = '/';
     }
   };
 
