@@ -34,15 +34,17 @@ export function useTokenAuth() {
         }
         
         // Validate token by fetching user data
-        const response = await fetch('/api/auth/validate', {
+        console.log('Attempting to validate token with the server...');
+        const response = await fetch('/api/auth/me', {
           headers: {
             'Authorization': `Bearer ${storedToken}`
           }
         });
         
         if (response.ok) {
-          const data = await response.json();
-          setUser(data.user);
+          const userData = await response.json();
+          console.log('Got user data from server:', userData);
+          setUser(userData); // /api/auth/me directly returns user data, not wrapped in a 'user' object
           setToken(storedToken);
           console.log('Auth status check - isAuthenticated:', true);
         } else {
