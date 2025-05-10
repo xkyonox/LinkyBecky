@@ -6,7 +6,7 @@ import { Copy, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { copyToClipboard } from "@/lib/utils";
 import { QrCode } from "./qr-code";
-import { Profile as ProfileType } from "@/lib/store";
+import { Profile } from "@/types";
 
 export function PhonePreview() {
   const { user } = useAuthStore();
@@ -28,7 +28,7 @@ export function PhonePreview() {
     if (profileData && !profile && typeof profileData === 'object') {
       // Make sure profileData matches the required Profile interface
       if ('id' in profileData && 'userId' in profileData) {
-        setProfile(profileData as ProfileType);
+        setProfile(profileData as Profile);
       }
     }
   }, [profileData, profile, setProfile]);
