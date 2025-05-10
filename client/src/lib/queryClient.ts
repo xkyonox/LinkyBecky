@@ -96,9 +96,6 @@ export const getQueryFn: <T>(options: {
     
     try {
       if (authStorageRaw) {
-        // Log exact structure of localStorage['auth-storage']
-        console.log('Query - auth-storage structure:', JSON.parse(authStorageRaw));
-        
         const authStorage = JSON.parse(authStorageRaw);
         token = authStorage?.state?.token;
         
@@ -110,11 +107,9 @@ export const getQueryFn: <T>(options: {
             token.startsWith('eyJ') && 
             (token.match(/\./g) || []).length === 2;
           
-          console.log('Query - Token format valid:', isValidJwtFormat);
-          console.log('Query - Token first 10 chars:', token.substring(0, 10) + '...');
-          
           if (!isValidJwtFormat) {
             console.error('Query - Token does not appear to be in valid JWT format!');
+            token = null; // Don't use invalid tokens
           }
         } else {
           console.log('Query - Token is missing from auth storage state');
@@ -126,19 +121,34 @@ export const getQueryFn: <T>(options: {
       console.error('Query - Error parsing auth-storage from localStorage:', e);
     }
     
+    // Add cache-busting for auth endpoints to prevent stale data
+    const url = queryKey[0] as string;
+    const isCacheSensitiveEndpoint = 
+      url.includes('/api/auth/') || 
+      url.includes('/profile') || 
+      url.includes('/api/links');
+      
+    const finalUrl = isCacheSensitiveEndpoint 
+      ? `${url}${url.includes('?') ? '&' : '?'}_t=${Date.now()}` 
+      : url;
+    
     // Add Authorization header if token exists
     const headers: Record<string, string> = {
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
       ...(token ? { "Authorization": `Bearer ${token}` } : {})
     };
     
-    console.log(`Query fetch to ${queryKey[0]} with token: ${token ? "Present" : "Missing"}`);
+    console.log(`Query fetch to ${finalUrl} with token: ${token ? "Present" : "Missing"}`);
     
     // For debugging - check headers
     console.log("Query headers:", headers);
     
-    const res = await fetch(queryKey[0] as string, {
+    const res = await fetch(finalUrl, {
+      method: 'GET',
       headers,
-      credentials: "include",
+      credentials: "include", // Always include credentials for session cookie
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

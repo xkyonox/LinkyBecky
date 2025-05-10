@@ -400,24 +400,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // Get authenticated user based on JWT token
   app.get("/api/auth/me", authenticateToken, async (req, res) => {
     try {
+      console.log("🔍 GET /api/auth/me called with token auth");
+      console.log("User from token:", req.user);
+      
       const user = await storage.getUser(req.user!.id);
       
       if (!user) {
+        console.log(`❌ User with id ${req.user!.id} not found in database`);
         return res.status(404).json({ message: "User not found" });
       }
+      
+      console.log(`✅ Retrieved user: ${user.username} (ID: ${user.id})`);
       
       res.json({ 
         id: user.id, 
         username: user.username, 
         email: user.email,
         name: user.name,
-        avatar: user.avatar
+        bio: user.bio || "",
+        avatar: user.avatar || ""
       });
     } catch (error) {
-      console.error("Error fetching user:", error);
+      console.error("❌ Error fetching user:", error);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  // Get authenticated user from session (used for session-based auth)
+  app.get("/api/auth/me-from-session", async (req, res) => {
+    try {
+      console.log("🔍 GET /api/auth/me-from-session called");
+      console.log("Session:", req.session);
+      console.log("Cookies:", req.headers.cookie);
+      
+      // Check if we have a userId in the session
+      if (!req.session?.userId) {
+        console.log("❌ No userId in session");
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      // Get user from database
+      const userId = req.session.userId;
+      console.log(`✅ Found userId ${userId} in session`);
+      
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        console.log(`❌ User with id ${userId} not found in database`);
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      console.log(`✅ Retrieved user: ${user.username} (ID: ${user.id})`);
+      
+      // Generate a fresh token for the frontend
+      const token = generateToken({
+        id: user.id,
+        email: user.email,
+        username: user.username
+      });
+      
+      // Return the user with the token
+      res.json({
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        name: user.name,
+        bio: user.bio || "",
+        avatar: user.avatar || "",
+        token // Include the token in the response
+      });
+    } catch (error) {
+      console.error("❌ Error in /api/auth/me-from-session:", error);
+      res.status(500).json({ message: "Server error" });
     }
   });
 
