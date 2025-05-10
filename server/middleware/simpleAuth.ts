@@ -23,6 +23,12 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     // Get token from Authorization header
     const authHeader = req.headers.authorization;
     console.log("Authorization header present:", !!authHeader);
+    console.log("Request headers:", req.headers);
+    
+    // Log request info
+    console.log("Request URL:", req.originalUrl);
+    console.log("Request method:", req.method);
+    console.log("Request query:", req.query);
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       console.log("No valid Authorization header:", authHeader);

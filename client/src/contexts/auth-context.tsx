@@ -74,16 +74,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Use default queryFn from queryClient.ts, but with explicit handling for debugging
     queryFn: async () => {
       console.log('AuthContext: Fetching user data with token', token ? `(length: ${token.length})` : '(missing)');
+      console.log('AuthContext: Token value:', token);
       
       try {
+        // Add cache-busting parameter to prevent cached responses
+        const timestamp = Date.now();
+        const url = `/api/auth/me?_t=${timestamp}`;
+        console.log(`AuthContext: Making request to ${url}`);
+        
         // Explicitly pass the token in the authorization header
-        const response = await fetch('/api/auth/me', {
+        const response = await fetch(url, {
           headers: {
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Bearer ${token}`,
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
           }
         });
         
         console.log('AuthContext: /api/auth/me response status:', response.status);
+        console.log('AuthContext: Response headers:', 
+          Array.from(response.headers.entries()).reduce((obj, [key, val]) => ({...obj, [key]: val}), {}));
         
         if (!response.ok) {
           const errorText = await response.text();
