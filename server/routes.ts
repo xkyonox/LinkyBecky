@@ -44,14 +44,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Create an API router
   const apiRouter = express.Router();
+  
+  // Apply additional middleware for API routes
+  apiRouter.use((req, res, next) => {
+    // Log every API request for debugging
+    console.log(`[API] ${req.method} ${req.path} - Session ID: ${req.sessionID}`);
+    console.log(`[API] Cookie Header: ${req.headers.cookie}`);
+    
+    // Additional session debugging
+    if (req.session) {
+      console.log(`[API] Session exists: ${!!req.session}`);
+      console.log(`[API] userId in session: ${req.session.userId || 'none'}`);
+      console.log(`[API] passport in session: ${JSON.stringify(req.session.passport || 'none')}`);
+    }
+    
+    next();
+  });
+  
   app.use('/api', apiRouter);
 
   // We already have CORS configured in index.ts, so we don't need to configure it again here.
   // Keeping this comment to document that CORS is intentionally configured only once.
   
   // Endpoint to check auth status from session
-  apiRouter.get('/auth/me-from-session', (req: Request, res: Response) => {
+  apiRouter.get('/auth/me-from-session', async (req: Request, res: Response) => {
     try {
+      console.log("=================== SESSION AUTH CHECK ===================");
       console.log("[express] Session auth check - Session ID:", req.sessionID);
       console.log("[express] Session auth check - Cookies:", req.headers.cookie);
       console.log("[express] Session auth check - Is Authenticated:", req.isAuthenticated());
@@ -60,31 +78,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log("[express] Session auth check - User object:", req.user);
       console.log("[express] Session auth check - Session cookie settings:", req.session?.cookie);
       
-      // Check for userId in all possible locations
+      // Check for userId in all possible locations (dual storage for redundancy)
       const userId = req.session?.userId || req.session?.passport?.user;
       
-      if (userId || (req.isAuthenticated() && req.user)) {
-        // We have a user ID in the session or Passport says we're authenticated
-        console.log("[express] Session auth check - AUTHENTICATED with userId:", userId);
+      if (userId) {
+        console.log("[express] Session auth check - Found userId in session:", userId);
         
-        // Get the user data - either from req.user (if populated by Passport) or userId
-        const userData = req.user || { id: userId };
+        // We have the user ID but may need to fetch the full user data from the database
+        let userData = req.user;
         
-        res.json({ 
+        // If req.user is not populated by Passport, fetch it from the database
+        if (!userData) {
+          console.log("[express] Fetching user data from database for ID:", userId);
+          try {
+            userData = await storage.getUser(Number(userId));
+            if (!userData) {
+              console.log("[express] ❌ User not found in database for ID:", userId);
+              return res.json({ 
+                isAuthenticated: false,
+                user: null,
+                error: "User not found in database"
+              });
+            }
+            console.log("[express] ✅ User found in database:", userData.username);
+          } catch (dbError) {
+            console.error("[express] ❌ Database error fetching user:", dbError);
+            return res.json({ 
+              isAuthenticated: false,
+              user: null,
+              error: "Error fetching user from database"
+            });
+          }
+        }
+        
+        // Success! Return the authenticated user
+        console.log("[express] Session auth check - AUTHENTICATED with userData:", JSON.stringify(userData));
+        return res.json({ 
           isAuthenticated: true, 
           user: userData
         });
+      } else if (req.isAuthenticated() && req.user) {
+        // Passport says we're authenticated but userId not explicitly set
+        console.log("[express] Session auth check - Authenticated via Passport only");
+        
+        // Store the ID in both session formats for next time
+        req.session.userId = (req.user as any).id;
+        if (!req.session.passport?.user) {
+          req.session.passport = { user: (req.user as any).id };
+        }
+        
+        return res.json({ 
+          isAuthenticated: true, 
+          user: req.user
+        });
       } else {
-        // No authenticated user found in session
+        // No authenticated user found in session or via Passport
         console.log("[express] Session auth check - NOT AUTHENTICATED");
-        res.json({ 
+        return res.json({ 
           isAuthenticated: false,
           user: null
         });
       }
     } catch (error) {
       console.error("Error in /auth/me-from-session:", error);
-      res.status(500).json({ 
+      return res.status(500).json({ 
         isAuthenticated: false,
         error: "Internal server error checking authentication status"
       });
@@ -444,14 +501,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
           req.session.pendingUsername = pendingUsername;
         }
         
-        // Set the cookie properties for production
+        // Get production status
         const isProd = process.env.NODE_ENV === 'production';
+        
+        // For production environment, ensure cookie settings are correct
         if (isProd) {
-          console.log("📝 Setting production cookie properties");
-          // Critical: Explicitly set the cookie settings for production
+          // Log current cookie settings
+          console.log("Current cookie settings before modification:", req.session.cookie);
+          
+          console.log("⚠️ Setting production cookie properties");
+          
+          // Explicitly set the cookie settings for production - critical for cross-site cookies
           req.session.cookie.secure = true;
           req.session.cookie.sameSite = 'none';
+          
+          // Domain must match exactly for cookies to work in modern browsers
+          // Avoid subdomain wildcard notation (e.g., .replit.app)
           req.session.cookie.domain = 'linkybecky.replit.app';
+          
+          console.log("Updated cookie settings:", req.session.cookie);
         }
         
         // Generate JWT token and set as cookie for extra security
@@ -482,10 +550,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         
           console.log(`✅ Session saved successfully with user ID: ${userId}`);
-          console.log(`Session cookie:`, req.session.cookie);
+          console.log(`Session cookie final settings:`, req.session.cookie);
           console.log(`Session ID: ${req.sessionID}`);
         
-          // Construct redirect URL
+          // Construct redirect URL - avoid any paths that could conflict with API routes
+          // Use a distinct frontend route to handle auth callbacks
           let redirectUrl = "/auth/callback";
         
           // Add username as query param to frontend callback handler if available
