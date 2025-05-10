@@ -720,10 +720,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Username availability check
   app.get("/api/username/availability/:username", async (req, res) => {
     try {
+      // Use the debug utility to show request details
+      dumpRequestInfo(req, 'USERNAME AVAILABILITY CHECK');
+      
       const { username } = req.params;
+      console.log(`🔍 Checking availability for username: ${username}`);
       
       // Validate username format
       if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+        console.log(`❌ Invalid username format: ${username}`);
         return res.status(400).json({ 
           available: false, 
           message: "Username must be 3-20 characters and only contain letters, numbers, and underscores." 
@@ -732,12 +737,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const existingUser = await storage.getUserByUsername(username);
       
+      if (existingUser) {
+        console.log(`❌ Username is taken: ${username} by user ID: ${existingUser.id}`);
+      } else {
+        console.log(`✅ Username is available: ${username}`);
+      }
+      
       res.json({
         available: !existingUser,
         message: existingUser ? "Username is already taken." : "Username is available."
       });
     } catch (error) {
-      console.error("Error checking username availability:", error);
+      console.error("❌ Error checking username availability:", error);
       res.status(500).json({ 
         available: false, 
         message: "Error checking username availability." 

@@ -56,8 +56,17 @@ export default function Home() {
     setIsChecking(true);
     
     try {
-      const response = await fetch(`/api/username/availability/${username}`);
+      const response = await fetch(`/api/username/availability/${username}`, {
+        credentials: 'include', // Add this to ensure cookies are sent
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
       const data = await response.json();
+      
+      console.log('Username check response:', data);
       
       setUsernameMessage({
         type: data.available ? "success" : "error",
