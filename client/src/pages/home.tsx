@@ -280,6 +280,29 @@ export default function Home() {
               >
                 Claim Your Page
               </Button>
+              
+              {/* Auth Test Button (only for development) */}
+              <div className="pt-4 border-t mt-4">
+                <p className="text-xs text-muted-foreground mb-2">Developer Testing</p>
+                <div className="flex space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 text-xs"
+                    onClick={() => window.location.href = "/api/auth/google"}
+                  >
+                    Test Google Login
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 text-xs"
+                    onClick={() => window.location.href = "/auth/redirect"}
+                  >
+                    Test Auth Redirect
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -51,7 +51,7 @@ export default function AuthRedirect() {
       }
     } catch (error) {
       console.error('Error testing auth token:', error);
-      setTestResult(`ERROR: ${error.message}`);
+      setTestResult(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
   };
@@ -104,10 +104,58 @@ export default function AuthRedirect() {
     }
   }, [toast]);
   
+  // Function to manually create a test token for debugging purposes
+  const createTestToken = () => {
+    const testToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MiwiZW1haWwiOiJ0ZXN0QGV4YW1wbGUuY29tIiwidXNlcm5hbWUiOiJ0ZXN0dXNlciIsImlhdCI6MTcxNjg5MDAwMCwiZXhwIjoxNzE3NDk0ODAwfQ.8IOFL9WPpbcE8mfGbgVlnYllOdXeIt0tGQeC9gVXy7Y';
+    
+    // Store the token
+    localStorage.setItem('auth_token', testToken);
+    
+    // Set state and show message
+    setTestResult('INFO: Test token created and stored in localStorage');
+    
+    // Test the token
+    setTimeout(() => {
+      testAuthToken(testToken);
+    }, 500);
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center">
       <div className="animate-spin rounded-full h-12 w-12 border-4 border-t-transparent border-primary" aria-label="Loading"></div>
       <p className="mt-4 text-gray-600">Completing authentication...</p>
+      
+      {/* Display test result if available */}
+      {testResult && (
+        <div className={`mt-6 p-4 rounded-md max-w-lg ${
+          testResult.startsWith('SUCCESS') ? 'bg-green-100 text-green-800' : 
+          testResult.startsWith('INFO') ? 'bg-blue-100 text-blue-800' : 
+          'bg-red-100 text-red-800'
+        }`}>
+          {testResult}
+        </div>
+      )}
+      
+      {/* Developer tools - only visible when no token is present */}
+      {!localStorage.getItem('auth_token') && (
+        <div className="mt-8 p-4 border rounded-md bg-gray-50">
+          <p className="text-sm text-muted-foreground mb-2">Developer Testing Tools</p>
+          <div className="flex flex-col space-y-2">
+            <button 
+              onClick={createTestToken}
+              className="px-4 py-2 bg-gray-200 rounded-md text-sm hover:bg-gray-300 transition-colors"
+            >
+              Create Test Token
+            </button>
+            <button
+              onClick={() => window.location.href = '/'}
+              className="px-4 py-2 bg-red-100 rounded-md text-sm hover:bg-red-200 transition-colors"
+            >
+              Cancel &amp; Return Home
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
