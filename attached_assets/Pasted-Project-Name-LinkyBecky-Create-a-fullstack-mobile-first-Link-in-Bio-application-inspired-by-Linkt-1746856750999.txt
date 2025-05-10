@@ -1,0 +1,46 @@
+Project Name: LinkyBecky
+
+Create a fullstack, mobile-first Link-in-Bio application inspired by Linktree and closely integrated with a Bitly-like service named LinkyVicky. The app should be built with the exact same stack as LinkyVicky (React.js + Tailwind + TypeScript frontend, Node.js + Express + PostgreSQL backend using Drizzle ORM).
+
+Start with a GitHub reference repo (assume structure, routes, and base UI are imported), but remove redundant features and extend it to include the following core functionalities:
+
+✅ Link Management
+- Add/edit/delete multiple personal links
+- Automatically shorten URLs by calling the LinkyVicky API
+- Display QR codes for each shortened link (LinkyVicky API)
+- Add UTM parameters easily via toggle controls
+- Drag-and-drop link sorting
+
+✅ AI Integration (ChatGPT API)
+- Suggest link titles, descriptions, and CTA copy based on input URL
+- Weekly AI performance summary (e.g., "This link is underperforming in Korea")
+- Recommend optimal link order or visibility based on CTR
+
+✅ Profile Customization
+- Editable mobile-first public profile page at `linkybecky.com/@username`
+- Live editor for background color, font, and layout
+- Support for YouTube/Spotify embeds
+- Social icons and custom domain mapping
+
+✅ Analytics Dashboard
+- Display real-time stats by calling LinkyVicky's analytics API
+- Show device, region, and browser stats per link
+- Track visitor trends over time
+
+✅ Auth & Access
+- Login/signup with Google OAuth
+- Session-based login with JWT token support
+- Logged-in users can access editor, dashboard, and analytics
+
+✅ Extensibility & API Use
+- Webhooks/Zapier support (on click events)
+- Support Stripe for Pro Plan if extended later
+- All backend routes to use Express + PostgreSQL + Drizzle
+
+⚙️ Dev Structure
+- Monorepo setup using Replit’s Node.js template
+- Split `/client` and `/server` folders
+- Use `dotenv`, `axios`, `zustand`, and `react-router-dom`
+- Replit-ready `.replit` and `replit.nix` files included
+
+Priority: Mobile-first, AI-enhanced UX, and seamless LinkyVicky integration.
