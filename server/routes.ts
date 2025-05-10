@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from "express";
+import express, { type Express, type Request, type Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db"; // Import the database client
@@ -36,6 +36,10 @@ function dumpRequestInfo(req: Request, title: string = 'Request Info') {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
+  
+  // Create an API router to better organize and handle our API endpoints
+  const apiRouter = express.Router();
+  app.use('/api', apiRouter);
 
   // Setup CORS - ensure it runs before session middleware
   app.use(cors({
@@ -719,8 +723,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Simple status endpoint to check if API is online
-  app.get("/api/status", (req, res) => {
+  // Simple status endpoint to check if API is online - moved to apiRouter
+  apiRouter.get("/status", (req: Request, res: Response) => {
+    // Force the content type to be JSON
+    res.setHeader('Content-Type', 'application/json');
+    
     // Use our debug utility to show request details
     dumpRequestInfo(req, 'STATUS CHECK');
     
@@ -733,8 +740,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
   
-  // Test database endpoint
-  app.get("/api/test-db", async (req, res) => {
+  // Test database endpoint - moved to apiRouter
+  apiRouter.get("/test-db", async (req: Request, res: Response) => {
+    // Force the content type to be JSON
+    res.setHeader('Content-Type', 'application/json');
+    
     console.log("🔍 TEST DB ENDPOINT HIT");
     
     // Test direct username query
@@ -787,8 +797,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Username availability check
-  app.get("/api/username/availability/:username", async (req, res) => {
+  // Username availability check - moved to apiRouter
+  apiRouter.get("/username/availability/:username", async (req: Request, res: Response) => {
+    // Force the content type to be JSON
+    res.setHeader('Content-Type', 'application/json');
     console.log("🎯 USERNAME AVAILABILITY CHECK ENDPOINT HIT");
     console.log("🎯 URL path:", req.url);
     console.log("🎯 Cookies present:", !!req.headers.cookie);

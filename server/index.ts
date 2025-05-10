@@ -192,6 +192,114 @@ app.use((req, res, next) => {
     throw err;
   });
 
+  // Create a custom API router for handling all /api routes
+  // This will create a completely separate handler for API routes
+  app.all('/api/*', (req: Request, res: Response, next: NextFunction) => {
+    log(`API Route intercepted: ${req.method} ${req.path}`);
+    
+    // Extract the original route path after /api/
+    const apiPath = req.path.replace(/^\/api/, '');
+    log(`API Path: ${apiPath}`);
+    
+    // Define a custom handler that automatically returns JSON
+    const handleApiRequest = async () => {
+      try {
+        // Force content type to JSON for all API responses
+        res.setHeader('Content-Type', 'application/json');
+        
+        // Status endpoint
+        if (req.method === 'GET' && apiPath === '/status') {
+          return res.json({
+            status: "online",
+            time: new Date().toISOString(),
+            env: process.env.NODE_ENV || "development",
+            sessionId: req.sessionID || null,
+            cookiePresent: !!req.headers.cookie
+          });
+        }
+        
+        // Test DB endpoint
+        if (req.method === 'GET' && apiPath === '/test-db') {
+          try {
+            const connection = await db.execute(sql`SELECT 1 as connected`);
+            
+            // Get tables from database
+            const tables = await db.execute(sql`
+              SELECT table_name 
+              FROM information_schema.tables 
+              WHERE table_schema = 'public'
+            `);
+            
+            // Count users
+            const userCount = await db.execute(sql`SELECT COUNT(*) as count FROM users`);
+            
+            return res.json({
+              status: "Database connection successful",
+              tables: tables.rows?.map((row: any) => row.table_name) || [],
+              userCount: userCount.rows?.[0]?.count || 0
+            });
+          } catch (error: any) {
+            console.error("❌ Database test error:", error);
+            return res.status(500).json({
+              status: "Database connection error",
+              error: error?.message || String(error)
+            });
+          }
+        }
+        
+        // Username availability check
+        if (req.method === 'GET' && apiPath.startsWith('/username/availability/')) {
+          const username = apiPath.replace('/username/availability/', '');
+          
+          // Validate username format
+          if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+            return res.status(400).json({ 
+              available: false, 
+              message: "Username must be 3-20 characters and only contain letters, numbers, and underscores." 
+            });
+          }
+          
+          try {
+            const result = await db.execute(sql`
+              SELECT EXISTS (
+                SELECT 1 FROM users WHERE username = ${username}
+              ) as exists
+            `);
+            
+            const userExists = result.rows?.[0]?.exists === true || 
+                             result.rows?.[0]?.exists === 't' || 
+                             result.rows?.[0]?.exists === 'true';
+            
+            return res.json({
+              available: !userExists,
+              message: userExists 
+                ? "Username is already taken." 
+                : "Username is available."
+            });
+          } catch (error) {
+            console.error("❌ Username SQL check error:", error);
+            return res.status(500).json({
+              available: false,
+              message: "Server error checking username availability."
+            });
+          }
+        }
+        
+        // If no handler matched, return a 404
+        return res.status(404).json({ 
+          error: 'API endpoint not found',
+          path: apiPath
+        });
+      } catch (error) {
+        console.error("API error:", error);
+        return res.status(500).json({ error: 'Internal server error' });
+      }
+    };
+    
+    // Handle the API request and prevent further processing
+    handleApiRequest().catch(next);
+  });
+
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
