@@ -14,7 +14,8 @@ export async function apiRequest(
   data?: unknown | undefined,
 ): Promise<Response> {
   // Get token from auth store
-  const { token } = useAuthStore.getState();
+  const state = useAuthStore.getState();
+  const token = state?.token;
   
   // Prepare headers
   const headers: Record<string, string> = {
@@ -24,6 +25,9 @@ export async function apiRequest(
   
   // Log for debugging
   console.log(`API Request to ${url} with token: ${token ? "Present" : "Missing"}`);
+  
+  // For debugging - check headers
+  console.log("Request headers:", headers);
   
   const res = await fetch(url, {
     method,
@@ -54,7 +58,8 @@ export const getQueryFn: <T>(options: {
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
     // Get token from auth store
-    const { token } = useAuthStore.getState();
+    const state = useAuthStore.getState();
+    const token = state?.token;
     
     // Add Authorization header if token exists
     const headers: Record<string, string> = {
@@ -62,6 +67,9 @@ export const getQueryFn: <T>(options: {
     };
     
     console.log(`Query fetch to ${queryKey[0]} with token: ${token ? "Present" : "Missing"}`);
+    
+    // For debugging - check headers
+    console.log("Query headers:", headers);
     
     const res = await fetch(queryKey[0] as string, {
       headers,
