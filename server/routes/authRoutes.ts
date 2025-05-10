@@ -21,10 +21,10 @@ declare module 'express-session' {
 
 const router = Router();
 
-// Redirect with token endpoint
+// Enhanced callback-redirect endpoint
 router.get('/callback-redirect', (req: Request, res: Response) => {
   try {
-    const { token, username, error } = req.query;
+    const { token, username, error, state } = req.query;
     
     console.log('=====================================================');
     console.log('CALLBACK-REDIRECT ENDPOINT CALLED');
@@ -35,6 +35,7 @@ router.get('/callback-redirect', (req: Request, res: Response) => {
       hasToken: !!token, 
       tokenLength: token ? (token as string).length : 0,
       username, 
+      hasState: !!state,
       error 
     });
     
@@ -42,6 +43,7 @@ router.get('/callback-redirect', (req: Request, res: Response) => {
     const clientCallbackUrl = new URL('/auth/callback', `${req.protocol}://${req.headers.host}`);
     console.log('Base client callback URL:', clientCallbackUrl.toString());
     
+    // Add all parameters that were provided
     if (error) {
       clientCallbackUrl.searchParams.append('error', error as string);
       console.log('Added error param:', error);
@@ -57,8 +59,19 @@ router.get('/callback-redirect', (req: Request, res: Response) => {
       console.log('Added username param:', username);
     }
     
+    // Pass through any state parameter from the client
+    if (state) {
+      clientCallbackUrl.searchParams.append('state', state as string);
+      console.log('Added client state param');
+    }
+    
     console.log('Final redirect URL:', clientCallbackUrl.toString());
     console.log('=====================================================');
+    
+    // Add cache control headers to prevent any caching of this redirect
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     
     // Redirect to the client app with the token
     return res.redirect(clientCallbackUrl.toString());

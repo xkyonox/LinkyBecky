@@ -442,19 +442,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get(
     "/api/auth/google/callback",
-    passport.authenticate("google", { failureRedirect: "/" }),
+    passport.authenticate("google", { failureRedirect: "/auth/callback?error=google_auth_failed" }),
     (req, res) => {
       dumpRequestInfo(req, 'GOOGLE OAUTH CALLBACK');
+      console.log('📣 Google OAuth callback received');
       
       // Extract state if provided
       const stateParam = req.query.state as string;
       let pendingUsername = '';
+      let clientState = '';
       
       if (stateParam) {
         try {
           const stateObj = JSON.parse(stateParam);
           pendingUsername = stateObj.pendingUsername || '';
-          console.log('📝 Extracted pendingUsername from state:', pendingUsername);
+          clientState = stateObj.clientState || '';
+          console.log('📝 Extracted from state:', { pendingUsername, clientState });
         } catch (e) {
           console.error('❌ Failed to parse state parameter:', e);
         }
@@ -469,7 +472,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Ensure the user object exists
       if (!req.user) {
         console.error("❌ OAuth callback: User object is missing");
-        return res.redirect("/?error=authentication_failed");
+        return res.redirect("/auth/callback?error=authentication_failed");
       }
       
       // Get user ID and save it to session
@@ -478,109 +481,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!userId) {
         console.error("❌ OAuth callback: User ID is missing");
-        return res.redirect("/?error=user_id_missing");
+        return res.redirect("/auth/callback?error=user_id_missing");
       }
       
       // For debugging - log the session before we modify it
       console.log('Session before modification:', JSON.stringify(req.session, null, 2));
       
-      // Ensure req.login is called to properly associate the user with the session
-      // This is crucial for Passport.js session handling
-      req.login(req.user, { session: true }, (loginErr) => {
-        if (loginErr) {
-          console.error("❌ Error in req.login():", loginErr);
-          return res.redirect("/?error=login_error");
-        }
-        
-        console.log('Session after req.login():', JSON.stringify(req.session, null, 2));
-        
-        // Update username if we have a pending one
-        if (pendingUsername) {
-          console.log(`Updating user ${userId} with pendingUsername: ${pendingUsername}`);
-          // This will be handled by the frontend callback handler
-        }
-        
-        // Save user ID to session - this should happen automatically via req.login, 
-        // but we'll set it explicitly for redundancy
-        req.session.userId = userId;
-        
-        // Double-check that passport session data is set correctly
-        if (!req.session.passport || !req.session.passport.user) {
-          console.log("⚠️ Manually setting passport user in session");
-          req.session.passport = { user: userId };
-        }
-        
-        // Save pendingUsername as well (as a backup)
-        if (pendingUsername) {
-          req.session.pendingUsername = pendingUsername;
-        }
-        
-        // Get production status
-        const isProd = process.env.NODE_ENV === 'production';
-        
-        // For production environment, ensure cookie settings are correct
-        if (isProd) {
-          // Log current cookie settings
-          console.log("Current cookie settings before modification:", req.session.cookie);
-          
-          console.log("⚠️ Setting production cookie properties");
-          
-          // Explicitly set the cookie settings for production - critical for cross-site cookies
-          req.session.cookie.secure = true;
-          req.session.cookie.sameSite = 'none';
-          
-          // Domain must match exactly for cookies to work in modern browsers
-          // Avoid subdomain wildcard notation (e.g., .replit.app)
-          req.session.cookie.domain = 'linkybecky.replit.app';
-          
-          console.log("Updated cookie settings:", req.session.cookie);
-        }
-        
-        // Generate JWT token and set as cookie for extra security
-        const token = generateToken({
-          id: userId,
-          email: (req.user as any).email || '',
-          username: (req.user as any).username || '',
-        });
-        
-        // Set the auth token cookie with the same settings
-        res.cookie('auth_token', token, {
-          httpOnly: true,
-          secure: isProd,
-          sameSite: isProd ? 'none' : 'lax',
-          maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
-          path: '/',
-          domain: isProd ? 'linkybecky.replit.app' : undefined
-        });
-        
-        console.log('Modified session (before save):', JSON.stringify(req.session, null, 2));
-        console.log('Session cookie settings:', req.session.cookie);
-        
-        // Force session save before redirecting
-        req.session.save((err) => {
-          if (err) {
-            console.error("❌ Failed to save session:", err);
-            return res.redirect("/?error=session_save_failed");
-          }
-        
-          console.log(`✅ Session saved successfully with user ID: ${userId}`);
-          console.log(`Session cookie final settings:`, req.session.cookie);
-          console.log(`Session ID: ${req.sessionID}`);
-        
-          // Construct redirect URL - avoid any paths that could conflict with API routes
-          // Use a distinct frontend route to handle auth callbacks
-          let redirectUrl = "/auth/callback";
-        
-          // Add username as query param to frontend callback handler if available
-          if (pendingUsername) {
-            redirectUrl += `?username=${encodeURIComponent(pendingUsername)}`;
-          }
-        
-          // Redirect to frontend callback handler
-          console.log(`✅ Redirecting to: ${redirectUrl}`);
-          res.redirect(redirectUrl);
-        });
+      // SIMPLIFIED APPROACH - Just generate token and redirect to callback handler
+      console.log('Using simplified token approach...');
+      
+      // Generate JWT token with the user data
+      const token = generateToken({
+        id: userId,
+        email: (req.user as any).email || '',
+        username: (req.user as any).username || '',
       });
+      
+      console.log(`✅ Generated JWT token (length: ${token.length})`);
+      
+      // Redirect to the callback-redirect endpoint with the token
+      const redirectParams = new URLSearchParams({
+        token: token
+      });
+      
+      // Add username if available
+      if (pendingUsername) {
+        redirectParams.append('username', pendingUsername);
+      }
+      
+      // Add state if provided by client
+      if (clientState) {
+        redirectParams.append('state', clientState);
+      }
+      
+      // Build final redirect URL
+      const redirectUrl = `/api/auth/callback-redirect?${redirectParams.toString()}`;
+      
+      console.log(`✅ Redirecting to: ${redirectUrl}`);
+      res.redirect(redirectUrl);
     }
   );
   

@@ -16,30 +16,59 @@ export const AuthCallbackHandler = () => {
       console.log("URL search params:", window.location.search);
       
       try {
-        // First check URL query parameters (in case we add URL params in the future)
+        // Extract URL query parameters 
         const searchParams = new URLSearchParams(window.location.search);
         const urlToken = searchParams.get("token");
         const urlUsername = searchParams.get("username");
         const urlError = searchParams.get("error");
+        const urlState = searchParams.get("state");
         
-        console.log("URL params:", { urlToken: urlToken ? "FOUND" : "NOT FOUND", urlUsername, urlError });
+        console.log("URL params:", { 
+          token: urlToken ? "FOUND" : "NOT FOUND", 
+          username: urlUsername || "NONE", 
+          error: urlError || "NONE",
+          state: urlState ? "FOUND" : "NONE" 
+        });
         
+        // Check if there was a clientState stored before redirect
+        const storedState = localStorage.getItem("oauth_state");
+        if (storedState && urlState) {
+          console.log("Checking state parameter match...");
+          if (storedState !== urlState) {
+            console.warn("State parameter mismatch - possible CSRF attempt");
+            toast({
+              title: "Security Warning",
+              description: "Authentication state mismatch detected",
+              variant: "destructive"
+            });
+          } else {
+            console.log("State parameter verified ✓");
+          }
+          // Clean up state parameter
+          localStorage.removeItem("oauth_state");
+        }
+        
+        // Handle error
         if (urlError) {
+          console.error("Authentication error:", urlError);
           toast({
             title: "Authentication Failed",
-            description: urlError,
+            description: urlError.replace(/\+/g, ' '),
             variant: "destructive"
           });
           setLocation("/");
           return;
         }
         
+        // Handle successful authentication with token
         if (urlToken) {
-          // If token is in URL, use it
-          console.log("Found token in URL parameters:", urlToken);
+          // Store the token in localStorage for subsequent API requests
+          console.log("Found token in URL parameters (length):", urlToken.length);
           localStorage.setItem("auth_token", urlToken);
           
+          // Store the username if provided
           if (urlUsername) {
+            console.log("Storing username:", urlUsername);
             localStorage.setItem("username", urlUsername);
           }
           
@@ -50,6 +79,7 @@ export const AuthCallbackHandler = () => {
           });
           
           // Redirect to dashboard
+          console.log("Redirecting to dashboard...");
           setLocation("/dashboard");
           return;
         }
