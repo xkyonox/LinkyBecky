@@ -38,9 +38,14 @@ function ProtectedRoute({ component: Component }: ProtectedRouteProps) {
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
   
+  // Show loading spinner while checking authentication status
   if (isLoading) {
     return <LoadingSpinner />;
   }
+  
+  // Define route components based on auth state
+  const renderDashboardRoute = () => isAuthenticated ? <Dashboard /> : <Redirect to="/" />;
+  const renderHomeRoute = () => isAuthenticated ? <Dashboard /> : <Home />;
   
   return (
     <Switch>
@@ -49,7 +54,7 @@ function Router() {
       </Route>
       
       <Route path="/dashboard">
-        {isAuthenticated ? <Dashboard /> : <Redirect to="/" />}
+        {renderDashboardRoute()}
       </Route>
       
       <Route path="/@:username">
@@ -59,7 +64,7 @@ function Router() {
       <Route path="/auth/callback" component={AuthCallbackHandler} />
       
       <Route path="/">
-        {isAuthenticated ? <Dashboard /> : <Home />}
+        {renderHomeRoute()}
       </Route>
       
       <Route component={NotFound} />

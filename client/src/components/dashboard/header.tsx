@@ -29,26 +29,8 @@ export function Header() {
     
     try {
       // Call the logout function from useAuth
-      const result = await logout();
-      
-      if (result.success) {
-        toast({
-          title: "Logged out",
-          description: "You have been successfully logged out.",
-        });
-        
-        // Force navigation to home page
-        window.location.href = '/';
-      } else {
-        toast({
-          title: "Error",
-          description: result.error || "There was an error logging out.",
-          variant: "destructive",
-        });
-        
-        // Even if there's an error, try to navigate home
-        window.location.href = '/';
-      }
+      // The logout function handles redirection to home page
+      await logout();
     } catch (error) {
       console.error("Error during logout:", error);
       
