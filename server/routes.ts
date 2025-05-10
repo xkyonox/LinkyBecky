@@ -1146,6 +1146,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         timestamp: new Date().toISOString()
       });
       
+      // Validate basic required fields from client
+      if (!req.body.title || !req.body.url) {
+        console.error("❌ Missing required fields in request:", req.body);
+        return res.status(400).json({ 
+          error: 'Missing required fields', 
+          message: 'Title and URL are required fields'
+        });
+      }
+      
       // Get userId from the authenticated user
       const userId = req.user!.id;
       if (!userId) {
@@ -1161,55 +1170,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`📊 User has ${existingLinks.length} existing links, new position will be ${maxPosition}`);
       
-      // Add userId and position to request body before validation
-      const completeData = {
-        ...req.body,
+      // Create link data with all required fields
+      const linkData = {
+        title: req.body.title,
+        url: req.body.url,
+        description: req.body.description || null,
+        iconType: req.body.iconType || "fas fa-link",
+        enabled: req.body.enabled !== undefined ? req.body.enabled : true,
+        utmSource: req.body.utmSource || null,
+        utmMedium: req.body.utmMedium || null, 
+        utmCampaign: req.body.utmCampaign || null,
+        utmTerm: req.body.utmTerm || null,
+        utmContent: req.body.utmContent || null,
         userId: userId,
         position: maxPosition
       };
-      
-      // Now validate the complete data
-      let parsedData;
-      try {
-        console.log("🔍 Validating link data with schema");
-        parsedData = insertLinkSchema.parse(completeData);
-        console.log("✅ Link validation successful");
-      } catch (validationError) {
-        console.error("❌ Link validation failed:", validationError);
-        if (validationError instanceof ZodError) {
-          const formattedError = fromZodError(validationError);
-          return res.status(400).json({ 
-            error: 'Validation error', 
-            message: formattedError.message,
-            details: validationError.errors
-          });
-        }
-        return res.status(400).json({ 
-          error: 'Invalid data', 
-          message: 'The provided link data is invalid'
-        });
-      }
-        
-      // Create link with userId and position
-      const linkData = parsedData;
       
       // If UTM parameters are provided, add them to the URL
       let originalUrl = linkData.url;
       if (linkData.utmSource || linkData.utmMedium || linkData.utmCampaign || 
           linkData.utmTerm || linkData.utmContent) {
         console.log("🔗 Adding UTM parameters to URL");
-        const utmParams = {
-          source: linkData.utmSource,
-          medium: linkData.utmMedium,
-          campaign: linkData.utmCampaign,
-          term: linkData.utmTerm,
-          content: linkData.utmContent
-        };
+        // Create proper UTM params object with only string type values
+        const utmParams: { 
+          source?: string; 
+          medium?: string; 
+          campaign?: string; 
+          term?: string; 
+          content?: string 
+        } = {};
+        
+        if (linkData.utmSource) utmParams.source = linkData.utmSource;
+        if (linkData.utmMedium) utmParams.medium = linkData.utmMedium;
+        if (linkData.utmCampaign) utmParams.campaign = linkData.utmCampaign;
+        if (linkData.utmTerm) utmParams.term = linkData.utmTerm;
+        if (linkData.utmContent) utmParams.content = linkData.utmContent;
+        
         linkData.url = addUtmParameters(linkData.url, utmParams);
         console.log(`🔗 URL with UTM params: Original URL: ${originalUrl} → Modified URL: ${linkData.url}`);
       }
       
       // Generate shortened URL if LinkyVicky integration is enabled
+      let shortUrl = null;
       if (process.env.LINKYVICKY_API_KEY) {
         console.log("🔄 LinkyVicky API Key found, attempting to shorten URL");
         try {
@@ -1217,7 +1219,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const shortenStart = Date.now();
           const shortenedData = await shortenUrl(linkData.url);
           const shortenDuration = Date.now() - shortenStart;
-          linkData.shortUrl = shortenedData.shortUrl;
+          shortUrl = shortenedData.shortUrl;
           console.log(`✅ URL shortened successfully in ${shortenDuration}ms:`, {
             originalUrl: linkData.url,
             shortUrl: shortenedData.shortUrl,
@@ -1236,9 +1238,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log("ℹ️ LinkyVicky API Key not configured, skipping URL shortening");
       }
       
+      // Add the shortUrl to the linkData if available
+      const completeData = {
+        ...linkData,
+        shortUrl
+      };
+      
       console.log("💾 Saving link to database");
       const dbSaveStart = Date.now();
-      const link = await storage.createLink(linkData);
+      const link = await storage.createLink(completeData);
       const dbSaveDuration = Date.now() - dbSaveStart;
       console.log(`✅ Link saved successfully in ${dbSaveDuration}ms with ID: ${link.id}`);
       
