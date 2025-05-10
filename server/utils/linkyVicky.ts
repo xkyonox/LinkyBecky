@@ -29,7 +29,16 @@ interface AnalyticsResponse {
  * Shorten a URL using LinkyVicky API
  */
 export async function shortenUrl(originalUrl: string, customSlug?: string): Promise<ShortenedUrlResponse> {
+  console.log(`LinkyVicky - Attempting to shorten URL: ${originalUrl}${customSlug ? ' with custom slug' : ''}`);
+  
+  if (!LINKYVICKY_API_KEY) {
+    console.error('LinkyVicky - API key is missing');
+    throw new Error('URL shortening service is not configured. Please contact support.');
+  }
+  
   try {
+    console.log(`LinkyVicky - Making API request to ${LINKYVICKY_API_URL}/api/shorten`);
+    
     const response = await axios.post(
       `${LINKYVICKY_API_URL}/api/shorten`,
       {
@@ -39,19 +48,39 @@ export async function shortenUrl(originalUrl: string, customSlug?: string): Prom
       {
         headers: {
           'Authorization': `Bearer ${LINKYVICKY_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        timeout: 10000 // 10 second timeout
       }
     );
 
+    console.log(`LinkyVicky - API responded with status ${response.status}`);
+    
     if (response.status !== 200) {
+      console.error(`LinkyVicky - Error response: ${response.statusText}`);
       throw new Error(`Failed to shorten URL: ${response.statusText}`);
     }
 
+    console.log('LinkyVicky - URL shortened successfully');
     return response.data;
-  } catch (error) {
-    console.error('Error shortening URL:', error);
-    throw new Error('Failed to shorten URL');
+  } catch (error: any) {
+    console.error('LinkyVicky - Error shortening URL:', error);
+    
+    // Provide more detailed error information
+    if (error.response) {
+      // The request was made and the server responded with a status code outside the 2xx range
+      console.error(`LinkyVicky - API error response: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
+      throw new Error(`URL shortening service error: ${error.response.status} - ${error.response.data?.message || 'Unknown error'}`);
+    } else if (error.request) {
+      // The request was made but no response was received
+      console.error('LinkyVicky - No response received from API');
+      throw new Error('URL shortening service unavailable. Please try again later.');
+    } else {
+      // Something happened in setting up the request
+      console.error(`LinkyVicky - Request setup error: ${error.message}`);
+      throw new Error(`URL shortening error: ${error.message}`);
+    }
   }
 }
 
@@ -59,26 +88,55 @@ export async function shortenUrl(originalUrl: string, customSlug?: string): Prom
  * Generate a QR code for a URL using LinkyVicky API
  */
 export async function generateQrCode(url: string): Promise<string> {
+  console.log(`LinkyVicky - Attempting to generate QR code for URL: ${url}`);
+  
+  if (!LINKYVICKY_API_KEY) {
+    console.error('LinkyVicky - API key is missing');
+    throw new Error('QR code generation service is not configured. Please contact support.');
+  }
+  
   try {
+    console.log(`LinkyVicky - Making QR code API request to ${LINKYVICKY_API_URL}/api/qrcode`);
+    
     const response = await axios.post(
       `${LINKYVICKY_API_URL}/api/qrcode`,
       { url },
       {
         headers: {
           'Authorization': `Bearer ${LINKYVICKY_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        timeout: 10000 // 10 second timeout
       }
     );
 
+    console.log(`LinkyVicky - QR code API responded with status ${response.status}`);
+    
     if (response.status !== 200) {
+      console.error(`LinkyVicky - QR code error response: ${response.statusText}`);
       throw new Error(`Failed to generate QR code: ${response.statusText}`);
     }
 
+    console.log('LinkyVicky - QR code generated successfully');
     return response.data.qrCodeUrl;
-  } catch (error) {
-    console.error('Error generating QR code:', error);
-    throw new Error('Failed to generate QR code');
+  } catch (error: any) {
+    console.error('LinkyVicky - Error generating QR code:', error);
+    
+    // Provide more detailed error information
+    if (error.response) {
+      // The request was made and the server responded with a status code outside the 2xx range
+      console.error(`LinkyVicky - QR code API error response: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
+      throw new Error(`QR code service error: ${error.response.status} - ${error.response.data?.message || 'Unknown error'}`);
+    } else if (error.request) {
+      // The request was made but no response was received
+      console.error('LinkyVicky - No response received from QR code API');
+      throw new Error('QR code service unavailable. Please try again later.');
+    } else {
+      // Something happened in setting up the request
+      console.error(`LinkyVicky - QR code request setup error: ${error.message}`);
+      throw new Error(`QR code generation error: ${error.message}`);
+    }
   }
 }
 
@@ -86,25 +144,54 @@ export async function generateQrCode(url: string): Promise<string> {
  * Get analytics for a shortened URL
  */
 export async function getUrlAnalytics(shortUrl: string, period?: string): Promise<AnalyticsResponse> {
+  console.log(`LinkyVicky - Attempting to get analytics for: ${shortUrl}${period ? ` with period ${period}` : ''}`);
+  
+  if (!LINKYVICKY_API_KEY) {
+    console.error('LinkyVicky - API key is missing');
+    throw new Error('Analytics service is not configured. Please contact support.');
+  }
+  
   try {
+    console.log(`LinkyVicky - Making analytics API request to ${LINKYVICKY_API_URL}/api/analytics/${shortUrl}`);
+    
     const response = await axios.get(
       `${LINKYVICKY_API_URL}/api/analytics/${shortUrl}`,
       {
         params: { period },
         headers: {
-          'Authorization': `Bearer ${LINKYVICKY_API_KEY}`
-        }
+          'Authorization': `Bearer ${LINKYVICKY_API_KEY}`,
+          'Accept': 'application/json'
+        },
+        timeout: 10000 // 10 second timeout
       }
     );
 
+    console.log(`LinkyVicky - Analytics API responded with status ${response.status}`);
+    
     if (response.status !== 200) {
+      console.error(`LinkyVicky - Analytics error response: ${response.statusText}`);
       throw new Error(`Failed to get analytics: ${response.statusText}`);
     }
 
+    console.log('LinkyVicky - Analytics retrieved successfully');
     return response.data;
-  } catch (error) {
-    console.error('Error getting analytics:', error);
-    throw new Error('Failed to get analytics');
+  } catch (error: any) {
+    console.error('LinkyVicky - Error getting analytics:', error);
+    
+    // Provide more detailed error information
+    if (error.response) {
+      // The request was made and the server responded with a status code outside the 2xx range
+      console.error(`LinkyVicky - Analytics API error response: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
+      throw new Error(`Analytics service error: ${error.response.status} - ${error.response.data?.message || 'Unknown error'}`);
+    } else if (error.request) {
+      // The request was made but no response was received
+      console.error('LinkyVicky - No response received from analytics API');
+      throw new Error('Analytics service unavailable. Please try again later.');
+    } else {
+      // Something happened in setting up the request
+      console.error(`LinkyVicky - Analytics request setup error: ${error.message}`);
+      throw new Error(`Analytics error: ${error.message}`);
+    }
   }
 }
 

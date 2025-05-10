@@ -5,6 +5,9 @@ import { db } from "./db";
 import { sql } from "drizzle-orm";
 import jwt from "jsonwebtoken";
 import cors from "cors";
+import session from "express-session";
+import { pool } from "./db";
+import ConnectPgSimple from "connect-pg-simple";
 
 // JWT functions
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-change-in-production';
@@ -41,13 +44,31 @@ function getUserFromToken(req: Request): { id: number; email: string; username: 
 
 const app = express();
 
-// Configure CORS
+// Configure CORS with enhanced options for better compatibility
 app.use(cors({
   origin: true, // Allow requests from any origin in development
   credentials: true, // Allow cookies to be sent with requests
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'Cache-Control',
+    'Pragma'
+  ],
+  exposedHeaders: ['Content-Length', 'X-Total-Count'],
+  maxAge: 86400, // 24 hours in seconds - How long the browser should cache the preflight
+  optionsSuccessStatus: 204, // Some legacy browsers choke on 204
+  preflightContinue: false // Pass the preflight response to next route handlers
 }));
+
+// Log all requests for debugging
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
 
 // Parse JSON request bodies
 app.use(express.json());
