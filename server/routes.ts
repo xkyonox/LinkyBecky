@@ -1146,24 +1146,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
         timestamp: new Date().toISOString()
       });
       
-      // Validate request data
-      const parsedData = insertLinkSchema.parse(req.body);
-      console.log("✅ Link validation successful");
+      // Get userId from the authenticated user
+      const userId = req.user!.id;
+      if (!userId) {
+        console.error("❌ Missing userId for link creation");
+        return res.status(400).json({ message: "User ID is required" });
+      }
       
       // Get max position for new link
-      const existingLinks = await storage.getLinks(req.user!.id);
+      const existingLinks = await storage.getLinks(userId);
       const maxPosition = existingLinks.length > 0 
         ? Math.max(...existingLinks.map(link => link.position)) + 1 
         : 0;
       
       console.log(`📊 User has ${existingLinks.length} existing links, new position will be ${maxPosition}`);
       
-      // Create link with userId and position
-      const linkData = {
-        ...parsedData,
-        userId: req.user!.id,
+      // Add userId and position to request body before validation
+      const completeData = {
+        ...req.body,
+        userId: userId,
         position: maxPosition
       };
+      
+      // Now validate the complete data
+      let parsedData;
+      try {
+        console.log("🔍 Validating link data with schema");
+        parsedData = insertLinkSchema.parse(completeData);
+        console.log("✅ Link validation successful");
+      } catch (validationError) {
+        console.error("❌ Link validation failed:", validationError);
+        if (validationError instanceof ZodError) {
+          const formattedError = fromZodError(validationError);
+          return res.status(400).json({ 
+            error: 'Validation error', 
+            message: formattedError.message,
+            details: validationError.errors
+          });
+        }
+        return res.status(400).json({ 
+          error: 'Invalid data', 
+          message: 'The provided link data is invalid'
+        });
+      }
+        
+      // Create link with userId and position
+      const linkData = parsedData;
       
       // If UTM parameters are provided, add them to the URL
       let originalUrl = linkData.url;
