@@ -18,6 +18,8 @@ import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import cors from "cors";
+import path from "path";
+import fs from "fs";
 
 // Helper function to dump request info for debugging
 function dumpRequestInfo(req: Request, title: string = 'Request Info') {
@@ -1117,6 +1119,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error generating link order recommendations:", error);
       res.status(500).json({ message: "Failed to generate recommendations" });
+    }
+  });
+
+  // Add a catch-all route to handle user profile URLs in the format /@username
+  // This should be the LAST route before returning the httpServer
+  app.get('/@:username', (req, res, next) => {
+    console.log(`Caught request for user profile: @${req.params.username}`);
+    
+    // In development mode, let Vite handle this
+    if (process.env.NODE_ENV === 'development') {
+      return next();
+    }
+    
+    // In production, we need to manually serve the index.html file
+    try {
+      const distPath = path.resolve(import.meta.dirname, "public");
+      console.log(`Serving index.html from ${distPath} for profile @${req.params.username}`);
+      return res.sendFile(path.resolve(distPath, "index.html"));
+    } catch (error) {
+      console.error('Error serving index.html for profile page:', error);
+      next(error);
     }
   });
 
