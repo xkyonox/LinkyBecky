@@ -9,6 +9,7 @@ import Login from "@/pages/login";
 import Home from "@/pages/home";
 import Dashboard from "@/pages/dashboard";
 import Profile from "@/pages/profile";
+import { AuthCallbackHandler } from "@/components/auth/auth-callback-handler";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -30,6 +31,7 @@ function Router() {
       <Route path="/@:username">
         {(params) => <Profile username={params.username} />}
       </Route>
+      <Route path="/auth/callback" component={AuthCallbackHandler} />
       <Route path="/">
         {isAuthenticated ? <Dashboard /> : <Home />}
       </Route>

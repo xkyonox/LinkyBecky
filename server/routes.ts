@@ -141,33 +141,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get(
     "/api/auth/google/callback",
     passport.authenticate("google", { failureRedirect: "/" }),
-    async (req, res) => {
+    (req, res) => {
       req.session.userId = (req.user as any)?.id;
-      
-      // Check if there's a pending username to update
-      const pendingUsername = req.session.pendingUsername;
-      if (pendingUsername && req.user) {
-        try {
-          // Check if username is available
-          const existingUser = await storage.getUserByUsername(pendingUsername as string);
-          
-          if (!existingUser) {
-            // Update the user's username
-            await storage.updateUser((req.user as any).id, {
-              username: pendingUsername as string
-            });
-          }
-          
-          // Clear the pending username
-          delete req.session.pendingUsername;
-        } catch (error) {
-          console.error("Error updating username:", error);
-        }
-      }
-      
-      res.redirect("/dashboard");
+      // Instead of handling username update here, we'll redirect to a frontend callback page
+      // that will handle username retrieval from sessionStorage
+      res.redirect("/auth/callback");
     }
   );
+  
+  // API endpoint to update username after OAuth login
+  app.post("/api/auth/update-username", authenticateToken, validateUser, async (req, res) => {
+    try {
+      const { username } = req.body;
+      
+      if (!username) {
+        return res.status(400).json({ message: "Username is required" });
+      }
+      
+      // Validate username format
+      if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+        return res.status(400).json({ 
+          message: "Username must be 3-20 characters and only contain letters, numbers, and underscores." 
+        });
+      }
+      
+      // Check if username is available
+      const existingUser = await storage.getUserByUsername(username);
+      
+      if (existingUser && existingUser.id !== req.user!.id) {
+        return res.status(409).json({ message: "Username is already taken." });
+      }
+      
+      // Update the user's username
+      const updatedUser = await storage.updateUser(req.user!.id, { username });
+      
+      if (!updatedUser) {
+        return res.status(500).json({ message: "Failed to update username" });
+      }
+      
+      // Generate JWT token
+      const token = generateToken({
+        id: updatedUser.id,
+        email: updatedUser.email,
+        username: updatedUser.username,
+      });
+      
+      res.json({ 
+        message: "Username updated successfully", 
+        user: {
+          id: updatedUser.id,
+          username: updatedUser.username,
+          email: updatedUser.email,
+          name: updatedUser.name,
+          avatar: updatedUser.avatar
+        },
+        token
+      });
+    } catch (error) {
+      console.error("Error updating username:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
 
   app.post("/api/auth/login", async (req, res) => {
     try {

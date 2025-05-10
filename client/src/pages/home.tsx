@@ -81,6 +81,7 @@ export default function Home() {
     if (isAvailable) {
       // Store the username in sessionStorage to retrieve after OAuth
       sessionStorage.setItem("pendingUsername", username);
+      console.log("Stored username in sessionStorage:", username);
       
       // Redirect to Google OAuth with username as state param
       window.location.href = `/api/auth/google?username=${encodeURIComponent(username)}`;
