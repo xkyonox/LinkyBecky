@@ -119,39 +119,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
         async (accessToken, refreshToken, profile, done) => {
           try {
+            console.log('🔍 Google OAuth processing for profile:', {
+              id: profile.id,
+              email: profile.emails?.[0]?.value,
+              displayName: profile.displayName
+            });
+            
             // Check if user exists by Google ID
             let user = await storage.getUserByGoogleId(profile.id);
+            if (user) {
+              console.log('✅ Found existing user by Google ID:', user.id, user.username);
+            }
             
             // If not found by Google ID, check by email
             const email = profile.emails?.[0]?.value || "";
             if (!user && email) {
+              console.log('Looking up user by email:', email);
               user = await storage.getUserByEmail(email);
               
               // If user exists with this email but no Google ID, update with Google ID
               if (user) {
+                console.log('Found user by email, updating with Google ID:', user.id);
                 user = await storage.updateUser(user.id, {
                   googleId: profile.id,
                   avatar: profile.photos?.[0]?.value || user.avatar
                 });
+                console.log('User updated with Google ID:', user.id);
               }
             }
             
+            // If pendingUsername is in session, use it
+            let pendingUsername = '';
+            
             // If still no user, create a new one
             if (!user) {
-              // Create new user if not exists
-              const username = `${profile.displayName.toLowerCase().replace(/\s+/g, ".")}_${Math.floor(Math.random() * 1000)}`;
+              console.log('Creating new user from Google profile');
+              
+              // Get a valid username - try to use display name first
+              const displayNameUsername = profile.displayName?.toLowerCase().replace(/\s+/g, ".");
+              const username = displayNameUsername || `user${Math.floor(Math.random() * 10000)}`;
+              
+              console.log('Creating user with username:', username);
               
               user = await storage.createUser({
                 username,
                 email,
-                name: profile.displayName,
+                name: profile.displayName || email.split('@')[0] || 'User',
                 googleId: profile.id,
-                avatar: profile.photos?.[0]?.value,
-                password: null, // No password for OAuth users
+                avatar: profile.photos?.[0]?.value || '',
+                password: '', // No password for OAuth users
               });
               
+              console.log('Created new user from Google OAuth:', user.id);
+              
               // Create default profile
-              await storage.createProfile({
+              const newProfile = await storage.createProfile({
                 userId: user.id,
                 theme: "light",
                 backgroundColor: "#7c3aed",
@@ -159,30 +181,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 fontFamily: "Inter",
                 socialLinks: []
               });
+              
+              console.log('Created profile for new user:', newProfile.id);
             }
             
+            console.log('✅ Google OAuth authentication success:', user.id, user.username);
+            
+            // Return the complete user object to be serialized
             return done(null, user);
           } catch (error) {
-            return done(error as Error);
+            console.error('❌ Error in Google OAuth strategy:', error);
+            return done(error as Error, undefined);
           }
         }
       )
     );
   }
 
-  // Serialize and deserialize user
-  passport.serializeUser((user: any, done) => {
-    done(null, user.id);
-  });
-
-  passport.deserializeUser(async (id: number, done) => {
-    try {
-      const user = await storage.getUser(id);
-      done(null, user || undefined);
-    } catch (error) {
-      done(error);
-    }
-  });
+  // We already have serialization/deserialization defined above, 
+  // so this section is removed to avoid duplication
 
   // Helper function to handle ZodErrors
   const handleZodError = (error: unknown, res: Response) => {
@@ -196,14 +213,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Authentication Routes
   app.get("/api/auth/google", (req, res, next) => {
-    // Store username in session if provided
+    // Store username in session if provided in query param
     if (req.query.username) {
+      console.log('📝 Storing pendingUsername in session:', req.query.username);
       req.session.pendingUsername = req.query.username as string;
+      
+      // Force session save before continuing with authentication
+      req.session.save((err) => {
+        if (err) {
+          console.error('❌ Failed to save pendingUsername to session:', err);
+        } else {
+          console.log('✅ pendingUsername saved to session:', req.query.username);
+          console.log('Current session:', req.session);
+        }
+        
+        // Continue with Google authentication
+        passport.authenticate("google", { 
+          scope: ["profile", "email"],
+          // Add state parameter to pass username through OAuth flow
+          state: req.query.username ? JSON.stringify({ pendingUsername: req.query.username }) : undefined
+        })(req, res, next);
+      });
+    } else {
+      // No username to store, proceed directly to authentication
+      console.log('No username provided in query params');
+      passport.authenticate("google", { 
+        scope: ["profile", "email"]
+      })(req, res, next);
     }
-    
-    passport.authenticate("google", { 
-      scope: ["profile", "email"]
-    })(req, res, next);
   });
 
   app.get(
@@ -211,6 +248,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     passport.authenticate("google", { failureRedirect: "/" }),
     (req, res) => {
       dumpRequestInfo(req, 'GOOGLE OAUTH CALLBACK');
+      
+      // Extract state if provided
+      const stateParam = req.query.state as string;
+      let pendingUsername = '';
+      
+      if (stateParam) {
+        try {
+          const stateObj = JSON.parse(stateParam);
+          pendingUsername = stateObj.pendingUsername || '';
+          console.log('📝 Extracted pendingUsername from state:', pendingUsername);
+        } catch (e) {
+          console.error('❌ Failed to parse state parameter:', e);
+        }
+      }
+      
+      // Also check session for pendingUsername
+      if (!pendingUsername && req.session.pendingUsername) {
+        pendingUsername = req.session.pendingUsername;
+        console.log('📝 Found pendingUsername in session:', pendingUsername);
+      }
       
       // Ensure the user object exists
       if (!req.user) {
@@ -227,13 +284,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.redirect("/?error=user_id_missing");
       }
       
-      // Save user ID to session
-      req.session.userId = userId;
+      // Update username if we have a pending one
+      if (pendingUsername) {
+        console.log(`Updating user ${userId} with pendingUsername: ${pendingUsername}`);
+        // This will be handled by the frontend callback handler
+      }
       
-      // Also save full user object as Passport expects (for deserialization)
-      req.session.passport = {
-        user: userId
-      };
+      // Save user ID to session in both formats
+      req.session.userId = userId;
+      req.session.passport = { user: userId };
+      
+      // Save pendingUsername as well (as a backup)
+      if (pendingUsername) {
+        req.session.pendingUsername = pendingUsername;
+      }
       
       // Force session save before redirecting
       req.session.save((err) => {
@@ -246,20 +310,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`Session cookie:`, req.session.cookie);
         console.log(`Session ID: ${req.sessionID}`);
         
-        // Try to regenerate session after save to ensure it persists
-        req.session.regenerate((regenerateErr) => {
-          if (regenerateErr) {
-            console.error("❌ Failed to regenerate session:", regenerateErr);
-          } else {
-            // Save user ID again in the new session
-            req.session.userId = userId;
-            req.session.passport = { user: userId };
-            console.log("✅ Session regenerated with fresh session ID:", req.sessionID);
-          }
-          
-          // Always redirect to the frontend callback handler
-          res.redirect("/auth/callback");
-        });
+        // Construct redirect URL
+        let redirectUrl = "/auth/callback";
+        
+        // Add username as query param to frontend callback handler if available
+        if (pendingUsername) {
+          redirectUrl += `?username=${encodeURIComponent(pendingUsername)}`;
+        }
+        
+        // Redirect to frontend callback handler
+        console.log(`✅ Redirecting to: ${redirectUrl}`);
+        res.redirect(redirectUrl);
       });
     }
   );
