@@ -57,41 +57,97 @@ export default function AuthRedirect() {
   };
   
   useEffect(() => {
-    const token = localStorage.getItem('auth_token');
+    // Extract token from URL first
+    const params = new URLSearchParams(window.location.search);
+    const tokenFromUrl = params.get('token');
+    const errorFromUrl = params.get('error');
     
-    console.log('Auth redirect page loaded');
-    console.log('Token in local storage:', token ? `exists (length: ${token.length})` : 'missing');
+    console.log('🔍 Auth redirect page loaded');
+    console.log('🔍 Token in URL:', tokenFromUrl ? `exists (length: ${tokenFromUrl.length})` : 'missing');
+    
+    // Check for errors in URL
+    if (errorFromUrl) {
+      console.error(`❌ Error in auth redirect: ${errorFromUrl}`);
+      setTestResult(`ERROR: Authentication failed - ${errorFromUrl}`);
+      toast({
+        title: "Authentication Failed",
+        description: `Error: ${errorFromUrl}`,
+        variant: "destructive"
+      });
+      
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 3000);
+      return;
+    }
+    
+    // If token is in URL, store it and use it
+    if (tokenFromUrl) {
+      console.log('✅ Token found in URL, storing in localStorage');
+      localStorage.setItem('auth_token', tokenFromUrl);
+      
+      // Test the new token immediately
+      testAuthToken(tokenFromUrl).then(testSucceeded => {
+        console.log('🔧 Auth token test result:', testSucceeded ? 'SUCCESS' : 'FAILED');
+        
+        if (testSucceeded) {
+          toast({
+            title: "Authentication Successful",
+            description: "You have been logged in successfully",
+            variant: "default"
+          });
+          
+          // Force hard navigation to dashboard after a delay to allow logs to be visible
+          console.log('✅ Now redirecting to dashboard');
+          setTimeout(() => {
+            window.location.href = '/dashboard';
+          }, 2000);
+        } else {
+          toast({
+            title: "Authentication Failed",
+            description: "Could not verify token with API",
+            variant: "destructive"
+          });
+          
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 3000);
+        }
+      });
+      return;
+    }
+    
+    // If no token in URL, check localStorage as fallback
+    const tokenFromStorage = localStorage.getItem('auth_token');
+    console.log('🔍 Token in localStorage:', tokenFromStorage ? `exists (length: ${tokenFromStorage.length})` : 'missing');
     
     const redirectToDashboard = async () => {
-      console.log('Preparing to redirect to dashboard...');
+      console.log('🔄 Preparing to redirect to dashboard...');
       
-      if (token) {
+      if (tokenFromStorage) {
         // Test if token works with API before redirecting
-        const testSucceeded = await testAuthToken(token);
-        console.log('Auth token test result:', testSucceeded ? 'SUCCESS' : 'FAILED');
+        const testSucceeded = await testAuthToken(tokenFromStorage);
+        console.log('🔧 Auth token test result:', testSucceeded ? 'SUCCESS' : 'FAILED');
         
-        // Show success message if not already shown
-        toast({
-          title: "Authentication Successful",
-          description: "You have been logged in successfully",
-          variant: "default"
-        });
+        if (testSucceeded) {
+          // Show success message
+          toast({
+            title: "Authentication Successful",
+            description: "You have been logged in successfully",
+            variant: "default"
+          });
+          
+          // Force hard navigation to dashboard
+          console.log('✅ Now redirecting to dashboard');
+          setTimeout(() => {
+            window.location.href = '/dashboard';
+          }, 2000);
+          return;
+        }
       }
       
-      // Force hard navigation to dashboard after a delay to allow logs to be visible
-      console.log('Now redirecting to dashboard');
-      setTimeout(() => {
-        window.location.href = '/dashboard';
-      }, 2000);
-    };
-    
-    // If we have a token, test it and redirect
-    if (token) {
-      // Add slight delay to ensure localStorage is committed and logs are clear
-      setTimeout(redirectToDashboard, 1000);
-    } else {
-      // No token found - something went wrong. Redirect to home
-      console.error('No auth token found in auth-redirect page');
+      // No valid token found - something went wrong
+      console.error('❌ No valid auth token found');
       toast({
         title: "Authentication Failed",
         description: "No authentication token found",
@@ -100,7 +156,16 @@ export default function AuthRedirect() {
       
       setTimeout(() => {
         window.location.href = '/';
-      }, 2000);
+      }, 3000);
+    };
+    
+    // If we have a token in localStorage, test it and redirect
+    if (tokenFromStorage) {
+      setTimeout(redirectToDashboard, 1000);
+    } else {
+      // No token found anywhere - show error
+      setTestResult('ERROR: No token found in URL or localStorage');
+      redirectToDashboard();
     }
   }, [toast]);
   
