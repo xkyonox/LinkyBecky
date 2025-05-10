@@ -24,79 +24,125 @@ export function AuthCallbackHandler() {
         console.log('Retrieved username from sessionStorage:', username);
 
         if (username) {
-          // Call the API to update username
-          const response = await apiRequest('POST', '/api/auth/update-username', { username });
+          // For the initial API call to update username, we can't use apiRequest directly
+          // since we don't have the token yet. We need to make a direct fetch call.
+          console.log('Making direct fetch call to /api/auth/update-username with username:', username);
           
-          if (response.ok) {
-            const data = await response.json();
+          try {
+            const updateUsernameResponse = await fetch('/api/auth/update-username', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ username }),
+              credentials: 'include' // Include cookies
+            });
             
-            if (data.user && data.token) {
-              // Update auth state with user data
-              setAuth(data.user, data.token);
+            console.log('Update username response status:', updateUsernameResponse.status);
+            
+            if (updateUsernameResponse.ok) {
+              // Parse the response to get the token and user info
+              const data = await updateUsernameResponse.json();
+              console.log('Successfully updated username, received token and user data');
               
-              // ✅ 2. Check if this is a new user and create profile if needed
-              try {
-                // Try to get existing profile
-                const profileResponse = await apiRequest('GET', '/api/profile');
+              if (data.user && data.token) {
+                // Store the token and user info in the auth store
+                console.log('Setting auth with user and token');
+                setAuth(data.user, data.token);
                 
-                // If profile doesn't exist (404), create a new one
-                if (!profileResponse.ok && profileResponse.status === 404) {
-                  console.log('Creating new profile for user with username:', username);
+                // Now that we have the token stored in the auth store, subsequent calls
+                // using apiRequest will include the Authorization header
+                
+                // ✅ 2. Check if this is a new user and create profile if needed
+                try {
+                  console.log('Checking if profile exists...');
+                  // Try to get existing profile - this will now use the token from auth store
+                  const profileResponse = await apiRequest('GET', '/api/profile');
                   
-                  // Create default profile with purple background color
-                  const createProfileResponse = await apiRequest('PUT', '/api/profile', {
-                    theme: 'default',
-                    backgroundColor: '#7c3aed', // Purple default
-                    textColor: '#ffffff',
-                    fontFamily: 'Inter',
-                    socialLinks: []
+                  // If profile doesn't exist (404), create a new one
+                  if (!profileResponse.ok && profileResponse.status === 404) {
+                    console.log('Creating new profile for user with username:', username);
+                    
+                    // Create default profile with purple background color
+                    const createProfileResponse = await apiRequest('PUT', '/api/profile', {
+                      theme: 'default',
+                      backgroundColor: '#7c3aed', // Purple default
+                      textColor: '#ffffff',
+                      fontFamily: 'Inter',
+                      socialLinks: []
+                    });
+                    
+                    // ✅ Improved error handling for profile creation
+                    if (!createProfileResponse.ok) {
+                      const profileError = await createProfileResponse.json();
+                      console.error('Error creating initial profile:', profileError);
+                      throw new Error(`Profile creation failed: ${profileError.message || 'Unknown error'}`);
+                    } else {
+                      console.log('Profile created successfully');
+                    }
+                  } else if (profileResponse.ok) {
+                    console.log('User already has a profile, no need to create one');
+                  }
+                } catch (profileError) {
+                  console.error('Error handling profile creation:', profileError);
+                  
+                  // Show more specific error for profile creation failure
+                  toast({
+                    variant: 'destructive',
+                    title: 'Profile Setup Error',
+                    description: 'There was an issue setting up your profile. Please try again or contact support.',
                   });
                   
-                  // ✅ Improved error handling for profile creation
-                  if (!createProfileResponse.ok) {
-                    const profileError = await createProfileResponse.json();
-                    console.error('Error creating initial profile:', profileError);
-                    throw new Error(`Profile creation failed: ${profileError.message || 'Unknown error'}`);
-                  } else {
-                    console.log('Profile created successfully');
-                  }
-                } else if (profileResponse.ok) {
-                  console.log('User already has a profile, no need to create one');
+                  // Continue with redirect to dashboard even if profile creation fails
+                  // The profile can be created later if needed
                 }
-              } catch (profileError) {
-                console.error('Error handling profile creation:', profileError);
                 
-                // Show more specific error for profile creation failure
                 toast({
-                  variant: 'destructive',
-                  title: 'Profile Setup Error',
-                  description: 'There was an issue setting up your profile. Please try again or contact support.',
+                  title: 'Welcome to LinkyBecky!',
+                  description: `Your page @${username} has been claimed successfully.`,
                 });
-                
-                // Continue with redirect to dashboard even if profile creation fails
-                // The profile can be created later if needed
+              } else {
+                console.error('Response missing user or token:', data);
+                throw new Error('Invalid response from server: missing user or token');
               }
+            } else {
+              // Handle error response
+              let errorMessage = 'Failed to update username. Please try again.';
+              try {
+                const errorData = await updateUsernameResponse.json();
+                errorMessage = errorData.message || errorMessage;
+                console.error('Error updating username:', errorData);
+              } catch (e) {
+                console.error('Could not parse error response:', e);
+              }
+              
+              toast({
+                variant: 'destructive',
+                title: 'Error updating username',
+                description: errorMessage,
+              });
+              
+              // If username update fails, still redirect to home
+              setTimeout(() => {
+                setLocation('/');
+                isProcessingCallback = false;
+              }, 300);
+              
+              return;
             }
-
-            toast({
-              title: 'Welcome to LinkyBecky!',
-              description: `Your page @${username} has been claimed successfully.`,
-            });
-          } else {
-            const errorData = await response.json();
+          } catch (error) {
+            console.error('Exception during username update:', error);
             toast({
               variant: 'destructive',
-              title: 'Error updating username',
-              description: errorData.message || 'Failed to update username. Please try again.',
+              title: 'Authentication Error',
+              description: 'There was a problem completing your login. Please try again.',
             });
             
-            // If username update fails, still redirect to dashboard if authenticated
             setTimeout(() => {
-              setLocation('/dashboard');
+              setLocation('/');
               isProcessingCallback = false;
             }, 300);
             
-            // ✅ 3. Keep the pendingUsername for now - we'll clear it after redirect
             return;
           }
         }
