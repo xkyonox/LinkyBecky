@@ -31,7 +31,7 @@ function Router() {
         {(params) => <Profile username={params.username} />}
       </Route>
       <Route path="/">
-        {isAuthenticated ? <Dashboard /> : <Login />}
+        {isAuthenticated ? <Dashboard /> : <Home />}
       </Route>
       <Route component={NotFound} />
     </Switch>

@@ -127,13 +127,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
   };
 
   // Authentication Routes
-  app.get("/api/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
+  app.get("/api/auth/google", (req, res, next) => {
+    // Store username in session if provided
+    if (req.query.username) {
+      req.session.pendingUsername = req.query.username as string;
+    }
+    
+    passport.authenticate("google", { 
+      scope: ["profile", "email"]
+    })(req, res, next);
+  });
 
   app.get(
     "/api/auth/google/callback",
-    passport.authenticate("google", { failureRedirect: "/login" }),
-    (req, res) => {
+    passport.authenticate("google", { failureRedirect: "/" }),
+    async (req, res) => {
       req.session.userId = (req.user as any)?.id;
+      
+      // Check if there's a pending username to update
+      const pendingUsername = req.session.pendingUsername;
+      if (pendingUsername && req.user) {
+        try {
+          // Check if username is available
+          const existingUser = await storage.getUserByUsername(pendingUsername as string);
+          
+          if (!existingUser) {
+            // Update the user's username
+            await storage.updateUser((req.user as any).id, {
+              username: pendingUsername as string
+            });
+          }
+          
+          // Clear the pending username
+          delete req.session.pendingUsername;
+        } catch (error) {
+          console.error("Error updating username:", error);
+        }
+      }
+      
       res.redirect("/dashboard");
     }
   );

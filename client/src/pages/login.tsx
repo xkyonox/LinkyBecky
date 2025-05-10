@@ -115,7 +115,7 @@ export default function Login() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-primary mb-2">LinkyBecky</h1>
-          <p className="text-gray-600">Your link-in-bio solution</p>
+          <p className="text-gray-600">Build with AI. Share Your Story.</p>
         </div>
         
         <Tabs defaultValue="login" className="w-full">
