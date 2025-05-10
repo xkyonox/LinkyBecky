@@ -38,30 +38,28 @@ export function Header() {
   };
 
   return (
-    <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 fixed w-full z-10">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
+    <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 fixed w-full z-10 h-14">
+      <div className="max-w-5xl mx-auto px-4 py-4">
+        <div className="flex justify-between items-center">
           {/* Logo and Brand */}
           <div className="flex items-center">
             <Link href="/dashboard">
-              <a className="flex-shrink-0 flex items-center cursor-pointer">
-                <span className="text-primary font-bold text-2xl">LinkyBecky</span>
-              </a>
+              <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-violet-500 text-transparent bg-clip-text">
+                LinkyBecky
+              </h1>
             </Link>
           </div>
           
           {/* Desktop Navigation */}
           <nav className="hidden md:flex space-x-8 items-center">
             <Link href="/dashboard">
-              <a className="text-gray-600 dark:text-gray-300 hover:text-primary dark:hover:text-primary px-3 py-2 rounded-md text-sm font-medium">
+              <p className="text-gray-600 dark:text-gray-300 hover:text-primary dark:hover:text-primary px-3 py-2 rounded-md text-sm font-medium cursor-pointer">
                 Dashboard
-              </a>
+              </p>
             </Link>
-            <Link href={`/@${user?.username}`} target="_blank">
-              <a className="text-gray-600 dark:text-gray-300 hover:text-primary dark:hover:text-primary px-3 py-2 rounded-md text-sm font-medium">
-                View My Page
-              </a>
-            </Link>
+            <a href={`/@${user?.username}`} target="_blank" className="text-gray-600 dark:text-gray-300 hover:text-primary dark:hover:text-primary px-3 py-2 rounded-md text-sm font-medium">
+              View My Page
+            </a>
           </nav>
           
           {/* User Menu */}
@@ -89,28 +87,26 @@ export function Header() {
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>{user?.name || user?.username}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
+                <DropdownMenuItem>
                   <Link href="/dashboard">
-                    <a className="flex w-full cursor-pointer">
+                    <div className="flex items-center cursor-pointer">
                       <User className="mr-2 h-4 w-4" />
                       <span>Profile</span>
-                    </a>
+                    </div>
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href={`/@${user?.username}`} target="_blank">
-                    <a className="flex w-full cursor-pointer">
-                      <ExternalLink className="mr-2 h-4 w-4" />
-                      <span>View My Page</span>
-                    </a>
-                  </Link>
+                <DropdownMenuItem>
+                  <a href={`/@${user?.username}`} target="_blank" className="flex items-center cursor-pointer">
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    <span>View My Page</span>
+                  </a>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
+                <DropdownMenuItem>
                   <Link href="/dashboard?tab=settings">
-                    <a className="flex w-full cursor-pointer">
+                    <div className="flex items-center cursor-pointer">
                       <Settings className="mr-2 h-4 w-4" />
                       <span>Settings</span>
-                    </a>
+                    </div>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -142,15 +138,17 @@ export function Header() {
         <div className="md:hidden border-t border-gray-200 dark:border-gray-700">
           <div className="px-2 pt-2 pb-3 space-y-1">
             <Link href="/dashboard">
-              <a className="block px-3 py-2 rounded-md text-base font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700">
+              <div className="block px-3 py-2 rounded-md text-base font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
                 Dashboard
-              </a>
+              </div>
             </Link>
-            <Link href={`/@${user?.username}`} target="_blank">
-              <a className="block px-3 py-2 rounded-md text-base font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700">
-                View My Page
-              </a>
-            </Link>
+            <a 
+              href={`/@${user?.username}`} 
+              target="_blank"
+              className="block px-3 py-2 rounded-md text-base font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700"
+            >
+              View My Page
+            </a>
             <button
               onClick={handleLogout}
               className="w-full text-left block px-3 py-2 rounded-md text-base font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700"
