@@ -284,7 +284,7 @@ export default function Home() {
               {/* Auth Test Button (only for development) */}
               <div className="pt-4 border-t mt-4">
                 <p className="text-xs text-muted-foreground mb-2">Developer Testing</p>
-                <div className="flex space-x-2">
+                <div className="flex space-x-2 mb-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -302,6 +302,59 @@ export default function Home() {
                     Test Auth Redirect
                   </Button>
                 </div>
+                
+                {/* Quick Login Button using test token */}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full text-xs"
+                  onClick={async () => {
+                    try {
+                      // Get a test token from the server
+                      const response = await fetch('/api/auth/test-token', {
+                        method: 'GET',
+                        headers: {
+                          'Cache-Control': 'no-cache, no-store, must-revalidate',
+                          'Pragma': 'no-cache'
+                        }
+                      });
+                      
+                      if (!response.ok) {
+                        throw new Error(`Test token API failed: ${response.status}`);
+                      }
+                      
+                      const data = await response.json();
+                      console.log('✅ Got test token:', data);
+                      
+                      // Save token to localStorage
+                      if (data.token) {
+                        localStorage.setItem('auth_token', data.token);
+                        console.log('✅ Saved token to localStorage');
+                        
+                        // Redirect to dashboard
+                        toast({
+                          title: 'Quick Login Successful',
+                          description: `Logged in as ${data.user.username}`,
+                          variant: 'default'
+                        });
+                        
+                        // Redirect after a brief delay
+                        setTimeout(() => {
+                          window.location.href = '/dashboard';
+                        }, 1000);
+                      }
+                    } catch (error) {
+                      console.error('❌ Quick login error:', error);
+                      toast({
+                        title: 'Quick Login Failed',
+                        description: error instanceof Error ? error.message : 'Unknown error',
+                        variant: 'destructive'
+                      });
+                    }
+                  }}
+                >
+                  Quick Login (Test Admin)
+                </Button>
               </div>
             </div>
           </div>

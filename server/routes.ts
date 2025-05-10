@@ -259,6 +259,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Test token endpoint for debugging auth issues
+  apiRouter.get('/auth/test-token', async (req: Request, res: Response) => {
+    try {
+      console.log("[express] TEST TOKEN request received - generating test token");
+      
+      // Find admin user or create one if it doesn't exist
+      let testUser = await storage.getUserByUsername("admin");
+      
+      if (!testUser) {
+        console.log("[express] No admin user found, creating test admin user");
+        testUser = await storage.createUser({
+          username: "admin",
+          email: "admin@example.com",
+          name: "Admin User",
+          password: "password123", // In a real app, this would be hashed
+          bio: "Test admin account",
+          avatar: ""
+        });
+        
+        // Create default profile for admin
+        await storage.createProfile({
+          userId: testUser.id,
+          theme: "light",
+          backgroundColor: "#7c3aed",
+          textColor: "#ffffff",
+          fontFamily: "Inter",
+          socialLinks: []
+        });
+        
+        console.log("[express] Created test admin user with ID:", testUser.id);
+      } else {
+        console.log("[express] Found existing admin user:", testUser.id);
+      }
+      
+      // Generate token for the user
+      const token = generateToken({
+        id: testUser.id,
+        email: testUser.email,
+        username: testUser.username
+      });
+      
+      console.log("[express] Test token generated successfully");
+      res.status(200).json({ 
+        token, 
+        user: {
+          id: testUser.id,
+          username: testUser.username,
+          email: testUser.email
+        }
+      });
+    } catch (error) {
+      console.error("[express] Error generating test token:", error);
+      res.status(500).json({ error: "Failed to generate test token" });
+    }
+  });
+  
   // Headers for cookies
   app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Credentials', 'true');
