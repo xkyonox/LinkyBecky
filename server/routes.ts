@@ -45,7 +45,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         {
           clientID: process.env.GOOGLE_CLIENT_ID,
           clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-          callbackURL: "/api/auth/google/callback"
+          callbackURL: process.env.NODE_ENV === "production" 
+            ? "https://linkybecky.replit.app/api/auth/google/callback"
+            : "/api/auth/google/callback"
         },
         async (accessToken, refreshToken, profile, done) => {
           try {

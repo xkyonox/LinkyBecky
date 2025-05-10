@@ -50,7 +50,9 @@ LinkyBecky는 Linktree에서 영감을 받은 풀스택, 모바일 우선 링크
 2. 프로젝트를 생성하고 OAuth 동의 화면 설정
 3. 사용자 인증 정보 → 사용자 인증 정보 만들기 → OAuth 클라이언트 ID
 4. 애플리케이션 유형으로 '웹 애플리케이션' 선택
-5. 승인된 리디렉션 URI에 `http://localhost:5000/api/auth/google/callback` 추가
+5. 승인된 리디렉션 URI에 다음 URL들 추가:
+   - 로컬 개발: `http://localhost:5000/api/auth/google/callback`
+   - 프로덕션: `https://linkybecky.replit.app/api/auth/google/callback`
 6. 생성된 클라이언트 ID와 클라이언트 시크릿 사용
 
 ### LinkyVicky API 토큰
