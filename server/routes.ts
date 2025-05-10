@@ -175,29 +175,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     "/api/auth/google/callback",
     passport.authenticate("google", { failureRedirect: "/" }),
     (req, res) => {
-      req.session.userId = (req.user as any)?.id;
-      // Instead of handling username update here, we'll redirect to a frontend callback page
-      // that will handle username retrieval from sessionStorage
-      res.redirect("/auth/callback");
+      // Ensure the user object exists
+      if (!req.user) {
+        console.error("❌ OAuth callback: User object is missing");
+        return res.redirect("/?error=authentication_failed");
+      }
+      
+      // Get user ID and save it to session
+      const userId = (req.user as any)?.id;
+      console.log(`✅ Google OAuth successful for user ID: ${userId}`);
+      
+      if (!userId) {
+        console.error("❌ OAuth callback: User ID is missing");
+        return res.redirect("/?error=user_id_missing");
+      }
+      
+      // Save user ID to session
+      req.session.userId = userId;
+      
+      // Force session save before redirecting
+      req.session.save((err) => {
+        if (err) {
+          console.error("❌ Failed to save session:", err);
+          return res.redirect("/?error=session_save_failed");
+        }
+        
+        console.log(`✅ Session saved successfully with user ID: ${userId}`);
+        console.log(`Current session:`, req.session);
+        
+        // Redirect to the frontend callback handler
+        res.redirect("/auth/callback");
+      });
     }
   );
   
   // Token endpoint - returns a token for the authenticated user
-  // Used during OAuth callback flow
-  app.get("/api/auth/token", authenticateSession, async (req, res) => {
+  // Used during OAuth callback flow - removed authenticateSession middleware to debug
+  app.get("/api/auth/token", async (req, res) => {
     try {
+      console.log("🔍 /api/auth/token called");
+      console.log("Session data:", req.session);
+      console.log("Session ID:", req.sessionID);
+      console.log("Cookies:", req.headers.cookie);
+      
       // Get user from session
-      const userId = req.session.userId;
+      const userId = req.session?.userId;
       
       if (!userId) {
-        return res.status(401).json({ message: "Authentication required" });
+        console.error("❌ No userId in session");
+        return res.status(401).json({ message: "Authentication required", details: "No user ID in session" });
       }
+      
+      console.log(`✅ Found userId in session: ${userId}`);
       
       const user = await storage.getUser(userId);
       
       if (!user) {
+        console.error(`❌ User with ID ${userId} not found in database`);
         return res.status(404).json({ message: "User not found" });
       }
+      
+      console.log(`✅ User found: ${user.username} (ID: ${user.id})`);
       
       // Generate JWT token
       const token = generateToken({
@@ -206,7 +244,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         username: user.username
       });
       
-      console.log(`Generated token for user ID ${user.id}`);
+      console.log(`✅ Generated token for user ID ${user.id}`);
+      
+      // Set token in cookie as well for redundancy
+      res.cookie('auth_token', token, {
+        httpOnly: true,
+        secure: false, // Set to true in production with HTTPS
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
+        path: '/'
+      });
       
       res.json({ 
         token, 
@@ -214,11 +260,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           id: user.id, 
           username: user.username, 
           email: user.email,
-          name: user.name
+          name: user.name,
+          bio: user.bio || "",
+          avatar: user.avatar || ""
         } 
       });
     } catch (error) {
-      console.error("Error generating token:", error);
+      console.error("❌ Error generating token:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

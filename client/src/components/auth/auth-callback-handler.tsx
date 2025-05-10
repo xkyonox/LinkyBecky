@@ -31,18 +31,33 @@ export function AuthCallbackHandler() {
           try {
             // First get the token from Google OAuth callback
             console.log('Getting token from Google OAuth callback...');
-            const tokenResponse = await fetch('/api/auth/token', {
-              credentials: 'include' // Include cookies from the OAuth flow
+            console.log('Cookies before fetch:', document.cookie);
+            
+            // Add random query param to prevent caching
+            const timestamp = Date.now();
+            const tokenResponse = await fetch(`/api/auth/token?_=${timestamp}`, {
+              method: 'GET',
+              credentials: 'include', // Include cookies from the OAuth flow
+              headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+              }
             });
             
+            console.log('Token response status:', tokenResponse.status);
+            
             if (!tokenResponse.ok) {
-              console.error('Failed to retrieve token:', tokenResponse.status);
-              throw new Error('Failed to retrieve authentication token');
+              const errorText = await tokenResponse.text();
+              console.error('Failed to retrieve token:', tokenResponse.status, errorText);
+              throw new Error(`Failed to retrieve authentication token: ${tokenResponse.status} ${errorText}`);
             }
             
             // Get the token from the response
             const tokenData = await tokenResponse.json();
             console.log('Retrieved token:', tokenData.token ? 'Token present (not shown)' : 'Token missing!');
+            console.log('Retrieved user data:', tokenData.user ? 'User data present' : 'User data missing!');
+            console.log('Cookies after fetch:', document.cookie);
             
             if (!tokenData.token) {
               throw new Error('No token received from authentication');
