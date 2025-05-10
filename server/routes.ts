@@ -736,6 +736,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Test database endpoint
   app.get("/api/test-db", async (req, res) => {
     console.log("🔍 TEST DB ENDPOINT HIT");
+    
+    // Test direct username query
+    try {
+      console.log("🔍 Testing direct SQL query on users table");
+      const testUsername = "testabc";
+      const userExists = await db.execute(sql`
+        SELECT EXISTS (
+          SELECT 1 FROM users WHERE username = ${testUsername}
+        ) as exists
+      `);
+      console.log(`✅ Direct SQL query result for username '${testUsername}':`, userExists.rows?.[0]);
+    } catch (dbErr: any) {
+      console.error("❌ Direct username SQL test failed:", dbErr?.message || dbErr);
+    }
+    
     try {
       // Check if the 'users' table exists in the database
       const tableCheckResult = await db.execute(sql`
