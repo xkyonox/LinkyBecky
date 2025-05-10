@@ -17,10 +17,22 @@ import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
+import cors from "cors";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
 
+  // Setup CORS
+  app.use(cors({
+    // Allow requests from all origins in development, specific domain in production
+    origin: process.env.NODE_ENV === "production" 
+      ? ["https://linkybecky.replit.app"] 
+      : true,
+    credentials: true, // Allow credentials (cookies, authorization headers)
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  }));
+  
   // Set up session middleware
   app.use(
     session({
@@ -28,7 +40,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       resave: false,
       saveUninitialized: false,
       cookie: { 
-        secure: process.env.NODE_ENV === "production",
+        secure: process.env.NODE_ENV === "production", // Only use secure in production
+        httpOnly: true, // Prevent client-side JS from reading the cookie
+        sameSite: process.env.NODE_ENV === "production" ? 'none' : 'lax', // Allow cross-site cookies in production
         maxAge: 1000 * 60 * 60 * 24 * 7 // 1 week
       }
     })
@@ -37,6 +51,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize Passport
   app.use(passport.initialize());
   app.use(passport.session());
+  
+  // Debug middleware to log session and cookie data
+  app.use((req, res, next) => {
+    console.log('Debug - Session ID:', req.sessionID);
+    console.log('Debug - Session data:', req.session);
+    console.log('Debug - Cookies:', req.headers.cookie);
+    next();
+  });
 
   // Configure Google OAuth strategy
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
