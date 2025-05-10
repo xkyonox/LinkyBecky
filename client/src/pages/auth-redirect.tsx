@@ -170,19 +170,47 @@ export default function AuthRedirect() {
   }, [toast]);
   
   // Function to manually create a test token for debugging purposes
-  const createTestToken = () => {
-    const testToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MiwiZW1haWwiOiJ0ZXN0QGV4YW1wbGUuY29tIiwidXNlcm5hbWUiOiJ0ZXN0dXNlciIsImlhdCI6MTcxNjg5MDAwMCwiZXhwIjoxNzE3NDk0ODAwfQ.8IOFL9WPpbcE8mfGbgVlnYllOdXeIt0tGQeC9gVXy7Y';
-    
-    // Store the token
-    localStorage.setItem('auth_token', testToken);
-    
-    // Set state and show message
-    setTestResult('INFO: Test token created and stored in localStorage');
-    
-    // Test the token
-    setTimeout(() => {
-      testAuthToken(testToken);
-    }, 500);
+  const createTestToken = async () => {
+    try {
+      // Get a fresh token from the server
+      const response = await fetch('/api/auth/test-token', {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Failed to get test token:', errorText);
+        setTestResult(`ERROR: Failed to get test token - ${response.status} ${errorText}`);
+        return;
+      }
+      
+      const { token } = await response.json();
+      
+      if (!token) {
+        setTestResult('ERROR: Server returned empty token');
+        return;
+      }
+      
+      console.log('Got test token from server:', token.substring(0, 15) + '...');
+      
+      // Store the token
+      localStorage.setItem('auth_token', token);
+      
+      // Set state and show message
+      setTestResult('INFO: Test token created and stored in localStorage');
+      
+      // Test the token
+      setTimeout(() => {
+        testAuthToken(token);
+      }, 500);
+    } catch (error) {
+      console.error('Error getting test token:', error);
+      setTestResult(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
+    }
   };
 
   return (

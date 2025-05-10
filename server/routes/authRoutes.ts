@@ -441,4 +441,39 @@ router.post('/logout', (req: Request, res: Response) => {
   return res.json({ success: true });
 });
 
+// Test token endpoint - creates a test token for debugging purposes
+router.get('/test-token', async (req: Request, res: Response) => {
+  try {
+    console.log('[express] /auth/test-token endpoint hit');
+    
+    // Create a test user if it doesn't exist
+    let testUser = await storage.getUserByEmail('test@example.com');
+    
+    if (!testUser) {
+      console.log('[express] Creating test user');
+      testUser = await storage.createUser({
+        email: 'test@example.com',
+        username: 'testuser',
+        name: 'Test User',
+        password: 'hashed_password_would_go_here'
+      });
+    }
+    
+    // Generate token for test user
+    const token = generateToken({
+      id: testUser.id,
+      email: testUser.email,
+      username: testUser.username
+    });
+    
+    console.log('[express] Generated test token for user ID:', testUser.id);
+    
+    // Return the token
+    res.json({ token });
+  } catch (error) {
+    console.error('[express] Error generating test token:', error);
+    res.status(500).json({ message: 'Failed to generate test token' });
+  }
+});
+
 export const authRouter = router;
