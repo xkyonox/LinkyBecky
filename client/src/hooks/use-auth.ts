@@ -121,13 +121,28 @@ export function useAuth() {
   // Logout function
   const logout = async () => {
     try {
+      // Call the logout API endpoint
       await apiRequest("POST", "/api/auth/logout", {});
+      
+      // Clear the auth state from Zustand store
       clearAuth();
+      
+      // Clear any other potential auth data in localStorage
+      localStorage.removeItem('auth-storage');
+      
+      // Clear query cache to prevent stale data
+      window.location.href = '/';
+      
       return { success: true };
     } catch (error) {
       console.error("Logout error:", error);
       // Clear auth anyway
       clearAuth();
+      localStorage.removeItem('auth-storage');
+      
+      // Force navigation to home page even on error
+      window.location.href = '/';
+      
       return {
         success: true,
         error: error instanceof Error ? error.message : "An error occurred during logout"
