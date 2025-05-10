@@ -400,36 +400,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return res.status(500).json({ message: "Internal server error" });
   };
 
-  // Authentication Routes
+  // Authentication Routes - SIMPLIFIED APPROACH
   app.get("/api/auth/google", (req, res, next) => {
+    console.log('📣 Starting Google OAuth flow from browser');
+    
+    // Capture state parameter from the client
+    const stateParam = req.query.state as string || '';
+    console.log('State parameter received:', stateParam);
+    
     // Store username in session if provided in query param
     if (req.query.username) {
       console.log('📝 Storing pendingUsername in session:', req.query.username);
       req.session.pendingUsername = req.query.username as string;
-      
-      // Force session save before continuing with authentication
-      req.session.save((err) => {
-        if (err) {
-          console.error('❌ Failed to save pendingUsername to session:', err);
-        } else {
-          console.log('✅ pendingUsername saved to session:', req.query.username);
-          console.log('Current session:', req.session);
-        }
-        
-        // Continue with Google authentication
-        passport.authenticate("google", { 
-          scope: ["profile", "email"],
-          // Add state parameter to pass username through OAuth flow
-          state: req.query.username ? JSON.stringify({ pendingUsername: req.query.username }) : undefined
-        })(req, res, next);
-      });
-    } else {
-      // No username to store, proceed directly to authentication
-      console.log('No username provided in query params');
-      passport.authenticate("google", { 
-        scope: ["profile", "email"]
-      })(req, res, next);
     }
+    
+    // Create a state object to pass through OAuth flow
+    const stateObject = {
+      redirectTime: Date.now(),
+      csrfToken: Math.random().toString(36).substring(2, 15),
+      pendingUsername: req.query.username as string || '',
+      clientState: stateParam
+    };
+    
+    // Force session save before continuing with authentication
+    req.session.save((err) => {
+      if (err) {
+        console.error('❌ Failed to save session data:', err);
+        return res.redirect('/auth/callback?error=session_error');
+      } 
+      
+      console.log('✅ Session saved, proceeding with Google OAuth');
+      
+      // Continue with Google authentication - simplified approach
+      passport.authenticate("google", { 
+        scope: ["profile", "email"],
+        // Pass state as stringified JSON to preserve through the OAuth flow
+        state: JSON.stringify(stateObject)
+      })(req, res, next);
+    });
   });
 
   app.get(
