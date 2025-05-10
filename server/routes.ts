@@ -411,13 +411,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           username: (req.user as any).username || '',
         });
         
+        const isProd = process.env.NODE_ENV === 'production';
         res.cookie('auth_token', token, {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+          secure: isProd,
+          sameSite: isProd ? 'none' : 'lax',
           maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
           path: '/',
-          domain: process.env.NODE_ENV === 'production' ? 'linkybecky.replit.app' : undefined
+          domain: isProd ? 'linkybecky.replit.app' : undefined
         });
         
         console.log('Modified session (before save):', JSON.stringify(req.session, null, 2));

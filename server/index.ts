@@ -5,6 +5,7 @@ import { db } from "./db";
 import { sql } from "drizzle-orm";
 import jwt from "jsonwebtoken";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import session from "express-session";
 import { pool } from "./db";
 import ConnectPgSimple from "connect-pg-simple";
@@ -47,6 +48,9 @@ function getUserFromToken(req: Request): { id: number; email: string; username: 
 
 const app = express();
 
+// Critical: Trust proxy is required for secure cookies to work behind a proxy
+app.set('trust proxy', 1);
+
 // Configure CORS with enhanced options for better compatibility
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
@@ -75,7 +79,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// Parse JSON request bodies
+// Parse cookies first - critical for session management
+app.use(cookieParser());
+
+// Then parse JSON request bodies
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
@@ -88,20 +95,21 @@ const sessionStore = new PgSessionStore({
 });
 
 // Set up session middleware
+const isProd = process.env.NODE_ENV === 'production';
 app.use(session({
   store: sessionStore,
   secret: process.env.SESSION_SECRET || 'linkybecky-session-secret', 
   resave: false,
   saveUninitialized: false,
   name: 'linkybecky.sid',
-  proxy: process.env.NODE_ENV === 'production', // Trust the reverse proxy in production (Replit handles this)
+  proxy: true, // Always trust the reverse proxy (Replit handles this)
   cookie: {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    secure: isProd, // Only use secure cookies in production
+    sameSite: isProd ? 'none' : 'lax', // Must be 'none' in production with secure=true
     maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
     path: '/',
-    domain: process.env.NODE_ENV === 'production' ? 'linkybecky.replit.app' : undefined
+    domain: isProd ? 'linkybecky.replit.app' : undefined
   }
 }));
 
