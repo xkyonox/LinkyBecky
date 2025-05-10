@@ -777,6 +777,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log("🎯 USERNAME AVAILABILITY CHECK ENDPOINT HIT");
     console.log("🎯 URL path:", req.url);
     console.log("🎯 Cookies present:", !!req.headers.cookie);
+    console.log("🎯 Cookie content:", req.headers.cookie);
     console.log("🎯 Session ID:", req.sessionID || "none");
     console.log("🎯 Request headers:", req.headers);
     
@@ -787,6 +788,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { username } = req.params;
       console.log(`🔍 Checking availability for username: ${username}`);
       
+      // Test database connection first
+      try {
+        console.log("🔄 Testing database connection...");
+        const dbTest = await db.execute(sql`SELECT 1 as connected`);
+        console.log("✅ Database connection successful:", dbTest.rows?.[0]);
+      } catch (dbErr) {
+        console.error("❌ Database connection failed:", dbErr);
+        return res.status(503).json({ 
+          available: false, 
+          message: "Unable to connect to database. Please try again later." 
+        });
+      }
+      
       // Validate username format
       if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
         console.log(`❌ Invalid username format: ${username}`);
@@ -796,12 +810,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      // Check if users table exists
+      try {
+        console.log("🔄 Checking if users table exists...");
+        const tableCheck = await db.execute(sql`
+          SELECT EXISTS (
+            SELECT 1 FROM information_schema.tables 
+            WHERE table_schema = 'public'
+            AND table_name = 'users'
+          ) as exists
+        `);
+        
+        const exists = tableCheck.rows?.[0]?.exists === true || 
+                      tableCheck.rows?.[0]?.exists === 't' ||
+                      tableCheck.rows?.[0]?.exists === 'true';
+        
+        console.log("✅ Users table check result:", tableCheck.rows?.[0], "Exists:", exists);
+        
+        if (!exists) {
+          console.log("ℹ️ Users table does not exist - first user is being created");
+          return res.json({
+            available: true,
+            message: "Username is available."
+          });
+        }
+      } catch (tableErr) {
+        console.error("❌ Error checking users table:", tableErr);
+        // Continue anyway, as the error might be permission-related
+      }
+      
+      // Try direct SQL query first
+      try {
+        console.log("🔄 Trying direct SQL query for username check...");
+        const userCheck = await db.execute(sql`
+          SELECT id, username FROM users 
+          WHERE username = ${username} 
+          LIMIT 1
+        `);
+        
+        const exists = userCheck.rows && userCheck.rows.length > 0;
+        console.log("🔍 Direct SQL user check result:", userCheck.rows, "Exists:", exists);
+        
+        if (exists) {
+          console.log(`❌ Username is taken (via SQL): ${username}`);
+          return res.json({
+            available: false,
+            message: "Username is already taken."
+          });
+        } else {
+          console.log(`✅ Username is available (via SQL): ${username}`);
+          return res.json({
+            available: true,
+            message: "Username is available."
+          });
+        }
+      } catch (sqlErr) {
+        console.error("❌ Error in direct SQL username check:", sqlErr);
+        // Fall back to ORM method below
+      }
+      
+      // Fall back to ORM method
+      console.log("🔄 Falling back to ORM method for username check...");
       const existingUser = await storage.getUserByUsername(username);
       
       if (existingUser) {
-        console.log(`❌ Username is taken: ${username} by user ID: ${existingUser.id}`);
+        console.log(`❌ Username is taken (via ORM): ${username} by user ID: ${existingUser.id}`);
       } else {
-        console.log(`✅ Username is available: ${username}`);
+        console.log(`✅ Username is available (via ORM): ${username}`);
       }
       
       res.json({
@@ -810,9 +885,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("❌ Error checking username availability:", error);
+      // Return a JSON response even if there's an error
       res.status(500).json({ 
         available: false, 
-        message: "Error checking username availability." 
+        message: "Error checking username availability. Please try again." 
       });
     }
   });

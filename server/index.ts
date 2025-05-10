@@ -1,6 +1,8 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 
 const app = express();
 app.use(express.json());
@@ -37,6 +39,149 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Check and initialize database tables if they don't exist
+  try {
+    log("🗄️ Checking database connection and tables...");
+    
+    // First check if we can connect to the database
+    const connection = await db.execute(sql`SELECT 1 as connected`);
+    log("✅ Database connection successful: " + JSON.stringify(connection.rows?.[0]));
+    
+    // Check if the 'users' table exists
+    const tableCheck = await db.execute(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_schema = 'public'
+        AND table_name = 'users'
+      ) as exists
+    `);
+    
+    const usersTableExists = tableCheck.rows?.[0]?.exists === true || 
+                         tableCheck.rows?.[0]?.exists === 't' ||
+                         tableCheck.rows?.[0]?.exists === 'true';
+    
+    log(`✅ Database users table exists: ${usersTableExists}`);
+    
+    // If the users table doesn't exist, push the schema to the database
+    if (!usersTableExists) {
+      log("🗄️ Creating database tables from schema...");
+      
+      // Create sessions table for session storage
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS "sessions" (
+          "sid" VARCHAR(255) NOT NULL PRIMARY KEY,
+          "sess" JSON NOT NULL,
+          "expire" TIMESTAMP(6) NOT NULL
+        )
+      `);
+      
+      log("✅ Sessions table created");
+      
+      // Create users table
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS "users" (
+          "id" SERIAL PRIMARY KEY,
+          "username" VARCHAR(20) NOT NULL UNIQUE,
+          "email" VARCHAR(255) UNIQUE,
+          "password" VARCHAR(255),
+          "salt" VARCHAR(255),
+          "name" VARCHAR(255),
+          "bio" TEXT,
+          "avatar" TEXT,
+          "google_id" VARCHAR(255) UNIQUE,
+          "created_at" TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+      `);
+      
+      log("✅ Users table created");
+      
+      // Create profiles table
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS "profiles" (
+          "id" SERIAL PRIMARY KEY,
+          "user_id" INTEGER NOT NULL UNIQUE,
+          "theme" VARCHAR(50) NOT NULL DEFAULT 'default',
+          "background_color" VARCHAR(20) NOT NULL DEFAULT '#ffffff',
+          "text_color" VARCHAR(20) NOT NULL DEFAULT '#000000',
+          "font_family" VARCHAR(50) NOT NULL DEFAULT 'Inter',
+          "social_links" JSONB NOT NULL DEFAULT '[]',
+          "custom_domain" VARCHAR(255),
+          "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+          "updated_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+          FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE
+        )
+      `);
+      
+      log("✅ Profiles table created");
+      
+      // Create links table
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS "links" (
+          "id" SERIAL PRIMARY KEY,
+          "user_id" INTEGER NOT NULL,
+          "title" VARCHAR(100) NOT NULL,
+          "url" TEXT NOT NULL,
+          "short_url" VARCHAR(255),
+          "description" TEXT,
+          "icon_type" VARCHAR(50) NOT NULL DEFAULT 'auto',
+          "position" INTEGER NOT NULL DEFAULT 0,
+          "enabled" BOOLEAN NOT NULL DEFAULT true,
+          "utm_source" VARCHAR(100),
+          "utm_medium" VARCHAR(100),
+          "utm_campaign" VARCHAR(100),
+          "utm_term" VARCHAR(100),
+          "utm_content" VARCHAR(100),
+          "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+          "updated_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+          FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE
+        )
+      `);
+      
+      log("✅ Links table created");
+      
+      // Create analytics table
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS "analytics" (
+          "id" SERIAL PRIMARY KEY,
+          "user_id" INTEGER NOT NULL,
+          "link_id" INTEGER,
+          "clicks" INTEGER NOT NULL DEFAULT 1,
+          "country" VARCHAR(100),
+          "device" VARCHAR(100),
+          "browser" VARCHAR(100),
+          "referrer" VARCHAR(255),
+          "date" TIMESTAMP NOT NULL DEFAULT NOW(),
+          FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE,
+          FOREIGN KEY ("link_id") REFERENCES "links" ("id") ON DELETE SET NULL
+        )
+      `);
+      
+      log("✅ Analytics table created");
+      
+      // Create AI insights table
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS "ai_insights" (
+          "id" SERIAL PRIMARY KEY,
+          "user_id" INTEGER NOT NULL,
+          "link_id" INTEGER,
+          "content" TEXT NOT NULL,
+          "type" VARCHAR(50) NOT NULL,
+          "seen" BOOLEAN NOT NULL DEFAULT false,
+          "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+          FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE,
+          FOREIGN KEY ("link_id") REFERENCES "links" ("id") ON DELETE SET NULL
+        )
+      `);
+      
+      log("✅ AI insights table created");
+      
+      log("🚀 All database tables have been created successfully!");
+    }
+  } catch (dbError) {
+    log("❌ Database initialization error: " + String(dbError));
+    log("⚠️ Continuing without database initialization. Some features may not work correctly.");
+  }
+  
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
