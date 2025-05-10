@@ -74,6 +74,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use(passport.initialize());
   app.use(passport.session());
   
+  // Configure Passport to serialize and deserialize user objects to/from session
+  passport.serializeUser((user: any, done) => {
+    console.log('Serializing user to session:', user?.id || user);
+    // Store just the user ID in the session
+    done(null, user.id || user);
+  });
+  
+  passport.deserializeUser(async (id: number, done) => {
+    console.log('Deserializing user from session ID:', id);
+    try {
+      // Lookup the user in the database based on the ID from the session
+      const user = await storage.getUser(id);
+      if (!user) {
+        console.log('❌ User not found during deserialization:', id);
+        return done(null, false);
+      }
+      console.log('✅ User deserialized successfully:', user.username);
+      return done(null, user);
+    } catch (err) {
+      console.error('❌ Error deserializing user:', err);
+      return done(err, null);
+    }
+  });
+  
   // Debug middleware to log session and cookie data
   app.use((req, res, next) => {
     console.log('Debug - Session ID:', req.sessionID);
