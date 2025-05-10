@@ -193,6 +193,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Token-based authentication endpoint
+  apiRouter.get('/auth/me', async (req: Request, res: Response) => {
+    try {
+      const authHeader = req.headers.authorization;
+      
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        console.log("[express] Token auth check - Missing or invalid authorization header");
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const token = authHeader.split(' ')[1];
+      
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default_jwt_secret') as any;
+        console.log("[express] Token auth check - Decoded token:", decoded);
+        
+        if (typeof decoded === 'object' && decoded.id) {
+          // Fetch fresh user data
+          const user = await storage.getUser(decoded.id);
+          
+          if (!user) {
+            console.log("[express] Token auth check - User not found for ID:", decoded.id);
+            return res.status(404).json({ message: "User not found" });
+          }
+          
+          console.log("[express] Token auth check - Success, returning user data:", user);
+          return res.json(user);
+        }
+        
+        console.log("[express] Token auth check - Invalid token payload");
+        return res.status(401).json({ message: "Invalid token" });
+      } catch (error) {
+        console.error("[express] Token auth check - Error verifying token:", error);
+        return res.status(401).json({ message: "Invalid token" });
+      }
+    } catch (error) {
+      console.error("[express] Error in /api/auth/me endpoint:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   // Health check endpoint
   apiRouter.get('/health', async (req: Request, res: Response) => {
     try {
