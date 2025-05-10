@@ -234,6 +234,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Username availability check
+  app.get("/api/username/availability/:username", async (req, res) => {
+    try {
+      const { username } = req.params;
+      
+      // Validate username format
+      if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+        return res.status(400).json({ 
+          available: false, 
+          message: "Username must be 3-20 characters and only contain letters, numbers, and underscores." 
+        });
+      }
+      
+      const existingUser = await storage.getUserByUsername(username);
+      
+      res.json({
+        available: !existingUser,
+        message: existingUser ? "Username is already taken." : "Username is available."
+      });
+    } catch (error) {
+      console.error("Error checking username availability:", error);
+      res.status(500).json({ 
+        available: false, 
+        message: "Error checking username availability." 
+      });
+    }
+  });
+
   // User & Profile Routes
   app.get("/api/users/:username", async (req, res) => {
     try {
