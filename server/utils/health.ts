@@ -9,11 +9,18 @@ import { isLinkyVickyConfigured, testLinkyVickyConnection } from './linkyVicky';
 export function checkRequiredEnvVars(): {
   missing: string[];
   available: string[];
+  missingRecommended?: string[];
 } {
+  // In production, these would all be required
+  // For our current development setup, we only require DATABASE_URL
+  // and provide a fallback for JWT_SECRET in the auth middleware
   const required = [
     'DATABASE_URL',
-    'JWT_SECRET',
     'SESSION_SECRET',
+  ];
+
+  const recommended = [
+    'JWT_SECRET',
   ];
 
   const optional = [
@@ -26,9 +33,14 @@ export function checkRequiredEnvVars(): {
   ];
 
   const missing = required.filter(name => !process.env[name]);
-  const available = [...required, ...optional].filter(name => !!process.env[name]);
+  const missingRecommended = recommended.filter(name => !process.env[name]);
+  const available = [...required, ...recommended, ...optional].filter(name => !!process.env[name]);
 
-  return { missing, available };
+  return { 
+    missing,
+    available, 
+    missingRecommended: missingRecommended.length > 0 ? missingRecommended : undefined
+  };
 }
 
 // Check database connection
@@ -68,6 +80,7 @@ export async function getSystemHealth(): Promise<{
       success: boolean;
       message: string;
       missing?: string[];
+      missingRecommended?: string[];
       available?: string[];
     };
     linkyVicky?: {
@@ -79,12 +92,22 @@ export async function getSystemHealth(): Promise<{
 }> {
   // Check environment variables
   const envVars = checkRequiredEnvVars();
+  let envMessage = '';
+  
+  if (envVars.missing.length === 0) {
+    envMessage = 'All required environment variables are set';
+    if (envVars.missingRecommended && envVars.missingRecommended.length > 0) {
+      envMessage += `, but recommended variables are missing: ${envVars.missingRecommended.join(', ')}`;
+    }
+  } else {
+    envMessage = `Missing required environment variables: ${envVars.missing.join(', ')}`;
+  }
+  
   const envStatus = {
     success: envVars.missing.length === 0,
-    message: envVars.missing.length === 0 
-      ? 'All required environment variables are set' 
-      : `Missing required environment variables: ${envVars.missing.join(', ')}`,
+    message: envMessage,
     missing: envVars.missing.length > 0 ? envVars.missing : undefined,
+    missingRecommended: envVars.missingRecommended,
     available: envVars.available,
   };
 
