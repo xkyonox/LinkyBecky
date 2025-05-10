@@ -29,10 +29,32 @@ export function AuthCallbackHandler() {
           console.log('Making direct fetch call to /api/auth/update-username with username:', username);
           
           try {
+            // First get the token from Google OAuth callback
+            console.log('Getting token from Google OAuth callback...');
+            const tokenResponse = await fetch('/api/auth/token', {
+              credentials: 'include' // Include cookies from the OAuth flow
+            });
+            
+            if (!tokenResponse.ok) {
+              console.error('Failed to retrieve token:', tokenResponse.status);
+              throw new Error('Failed to retrieve authentication token');
+            }
+            
+            // Get the token from the response
+            const tokenData = await tokenResponse.json();
+            console.log('Retrieved token:', tokenData.token ? 'Token present (not shown)' : 'Token missing!');
+            
+            if (!tokenData.token) {
+              throw new Error('No token received from authentication');
+            }
+            
+            // Now use that token for the username update request
+            console.log('Using token to update username...');
             const updateUsernameResponse = await fetch('/api/auth/update-username', {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${tokenData.token}` // Add the token here
               },
               body: JSON.stringify({ username }),
               credentials: 'include' // Include cookies
@@ -104,16 +126,18 @@ export function AuthCallbackHandler() {
                 
                 // ✅ 2. Check if this is a new user and create profile if needed
                 try {
-                  // Wait a bit to ensure token is fully saved before making profile API call
-                  await new Promise(resolve => setTimeout(resolve, 300));
+                  // Use the original token from the first request (most reliable source)
+                  // This avoids any issues with token storage timing
+                  const token = tokenData.token || data.token;
                   
                   console.log('Checking if profile exists...');
+                  console.log('Using token to check profile (first 10 chars):', token.substring(0, 10) + '...');
                   
                   // Create direct fetch call with the token for profile check
                   const profileResponse = await fetch('/api/profile', {
                     method: 'GET',
                     headers: {
-                      'Authorization': `Bearer ${data.token}`
+                      'Authorization': `Bearer ${token}`
                     },
                     credentials: 'include'
                   });
@@ -128,7 +152,7 @@ export function AuthCallbackHandler() {
                       method: 'PUT',
                       headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${data.token}`
+                        'Authorization': `Bearer ${token}` // Use the same token
                       },
                       body: JSON.stringify({
                         theme: 'default',
