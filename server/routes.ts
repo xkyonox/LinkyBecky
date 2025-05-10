@@ -869,6 +869,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: "Logged out successfully" });
   });
   
+  // Also support GET for logout to avoid CORS issues
+  app.get("/api/auth/logout", (req, res) => {
+    console.log("[express] GET logout request received");
+    res.json({ message: "Logged out successfully" });
+  });
+  
   // User validation endpoint - using simpleAuth middleware
   app.get("/api/auth/validate", authenticate, (req, res) => {
     if (!req.user) {

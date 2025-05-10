@@ -65,7 +65,7 @@ export function Header() {
                 Dashboard
               </p>
             </Link>
-            <a href={`/@${user?.username}`} target="_blank" className="text-gray-600 dark:text-gray-300 hover:text-primary dark:hover:text-primary px-3 py-2 rounded-md text-sm font-medium">
+            <a href={user?.username ? `/@${user.username}` : '/'} target="_blank" className="text-gray-600 dark:text-gray-300 hover:text-primary dark:hover:text-primary px-3 py-2 rounded-md text-sm font-medium">
               View My Page
             </a>
           </nav>
@@ -104,7 +104,7 @@ export function Header() {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem>
-                  <a href={`/@${user?.username}`} target="_blank" className="flex items-center cursor-pointer">
+                  <a href={user?.username ? `/@${user.username}` : '/'} target="_blank" className="flex items-center cursor-pointer">
                     <ExternalLink className="mr-2 h-4 w-4" />
                     <span>View My Page</span>
                   </a>
@@ -151,7 +151,7 @@ export function Header() {
               </div>
             </Link>
             <a 
-              href={`/@${user?.username}`} 
+              href={user?.username ? `/@${user.username}` : '/'} 
               target="_blank"
               className="block px-3 py-2 rounded-md text-base font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700"
             >
