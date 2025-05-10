@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { authenticateToken, validateUser, generateToken } from "./middleware/auth";
+import { authenticateToken, validateUser, generateToken, authenticateSession } from "./middleware/auth";
 import { shortenUrl, generateQrCode, getUrlAnalytics, addUtmParameters } from "./utils/linkyVicky";
 import { generateLinkSuggestions, generatePerformanceInsights, generateLinkOrderRecommendations } from "./utils/openai";
 import { 
@@ -148,6 +148,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.redirect("/auth/callback");
     }
   );
+  
+  // Token endpoint - returns a token for the authenticated user
+  // Used during OAuth callback flow
+  app.get("/api/auth/token", authenticateSession, async (req, res) => {
+    try {
+      // Get user from session
+      const userId = req.session.userId;
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Generate JWT token
+      const token = generateToken({
+        id: user.id,
+        email: user.email,
+        username: user.username
+      });
+      
+      console.log(`Generated token for user ID ${user.id}`);
+      
+      res.json({ 
+        token, 
+        user: { 
+          id: user.id, 
+          username: user.username, 
+          email: user.email,
+          name: user.name
+        } 
+      });
+    } catch (error) {
+      console.error("Error generating token:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
   
   // API endpoint to update username after OAuth login
   app.post("/api/auth/update-username", authenticateToken, validateUser, async (req, res) => {

@@ -3,10 +3,11 @@ import jwt from 'jsonwebtoken';
 import { storage } from '../storage';
 import { SessionData } from 'express-session';
 
-// Extend SessionData to include userId property
+// Extend SessionData to include userId and pendingUsername properties
 declare module 'express-session' {
   interface SessionData {
     userId?: number;
+    pendingUsername?: string;
   }
 }
 
@@ -102,6 +103,11 @@ export async function validateUser(req: Request, res: Response, next: NextFuncti
 
 // Middleware for session-based authentication
 export function authenticateSession(req: Request, res: Response, next: NextFunction) {
+  // Detailed session debugging
+  console.log('Session middleware called');
+  console.log('Session object exists:', !!req.session);
+  console.log('Full session data:', req.session);
+  
   // Check if session exists and if it has a userId property (properly typed with our SessionData extension)
   if (req.session && req.session.userId) {
     console.log('Session authentication successful for user ID:', req.session.userId);
