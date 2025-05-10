@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { LoadingSpinner } from "../ui/loading-spinner";
 
 export const AuthCallbackHandler = () => {
   const [, setLocation] = useLocation();
@@ -74,7 +73,7 @@ export const AuthCallbackHandler = () => {
   if (isProcessing) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center">
-        <LoadingSpinner size="large" />
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-t-transparent border-primary" aria-label="Loading"></div>
         <p className="mt-4 text-gray-600">Completing authentication...</p>
       </div>
     );

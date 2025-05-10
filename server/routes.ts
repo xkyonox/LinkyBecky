@@ -18,9 +18,9 @@ import {
 import session from "express-session";
 import { z, ZodError } from "zod";
 import passport from "passport";
+import { authRouter } from "./routes/authRoutes";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { authRouter } from "./routes/authRoutes";
 import { fromZodError } from "zod-validation-error";
 import cors from "cors";
 import path from "path";

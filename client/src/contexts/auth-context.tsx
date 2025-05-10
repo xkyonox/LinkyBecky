@@ -99,12 +99,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   console.log('Auth status check - isAuthenticated:', !!token && !!user);
   console.log('Auth status check - session data:', user);
   
+  // Convert empty object to null to satisfy type checking
+  const safeUser = user && Object.keys(user).length > 0 ? user : null;
+  
   return (
     <AuthContext.Provider
       value={{
-        isAuthenticated: !!token && !!user,
+        isAuthenticated: !!token && !!safeUser,
         isLoading,
-        user: user || null,
+        user: safeUser,
         token,
         login,
         logout,
