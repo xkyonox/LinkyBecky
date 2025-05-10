@@ -10,6 +10,7 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import Dashboard from "@/pages/dashboard";
 import Profile from "@/pages/profile";
+import AuthRedirect from "@/pages/auth-redirect";
 import { AuthCallbackHandler } from "@/components/auth/auth-callback-handler";
 
 // Loading spinner component
@@ -63,6 +64,9 @@ function Router() {
       </Route>
       
       <Route path="/auth/callback" component={AuthCallbackHandler} />
+      
+      {/* New trampoline route for authentication redirects */}
+      <Route path="/auth/redirect" component={AuthRedirect} />
       
       <Route path="/">
         {renderHomeRoute()}

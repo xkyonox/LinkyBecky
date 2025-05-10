@@ -78,16 +78,13 @@ export const AuthCallbackHandler = () => {
             variant: "default"
           });
           
-          // Redirect to dashboard with a small delay to allow token to be processed
-          console.log("Scheduling redirect to dashboard...");
+          // Redirect to auth-redirect page which will handle the dashboard redirect
+          console.log("Scheduling redirect to auth-redirect page...");
           console.log("Token stored in localStorage:", localStorage.getItem('auth_token'));
           
-          // Add a temporary workaround - force a page reload
-          setTimeout(() => {
-            console.log("Now redirecting to dashboard...");
-            // Force reload AND navigation
-            window.location.href = "/dashboard";
-          }, 500);
+          // Immediately redirect to our auth-redirect page (trampoline)
+          console.log("Now redirecting to auth-redirect page...");
+          window.location.href = "/auth/redirect";
           return;
         }
         

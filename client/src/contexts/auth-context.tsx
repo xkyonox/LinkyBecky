@@ -42,13 +42,35 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, []);
   
+  // Check for token in localStorage on every render (more aggressive token checking)
+  useEffect(() => {
+    const checkStoredToken = () => {
+      const currentStoredToken = localStorage.getItem('auth_token');
+      console.log("Checking localStorage for token:", currentStoredToken ? `token exists (length: ${currentStoredToken.length})` : "no token found");
+      
+      // If localStorage has a token that's different from our state, update it
+      if (currentStoredToken && currentStoredToken !== token) {
+        console.log("Token found in localStorage differs from state - updating!");
+        setToken(currentStoredToken);
+      }
+    };
+    
+    // Check immediately
+    checkStoredToken();
+    
+    // Also set up an interval to check regularly (every 2 seconds)
+    const intervalId = setInterval(checkStoredToken, 2000);
+    
+    return () => clearInterval(intervalId);
+  }, [token]);
+  
   // Fetch user data if token exists
   const { data: user, isLoading, error: userError } = useQuery<User>({
     queryKey: ['/api/auth/me'],
     enabled: !!token,
-    retry: 1,
+    retry: 2,
     retryDelay: 1000,
-    staleTime: 300000, // 5 minutes
+    staleTime: 60000, // 1 minute - more frequent revalidation
     // Use default queryFn from queryClient.ts, but with explicit handling for debugging
     queryFn: async () => {
       console.log('AuthContext: Fetching user data with token', token ? `(length: ${token.length})` : '(missing)');
