@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { retryWithBackoff } from './retry';
 
 // LinkyVicky API base URL
 const LINKYVICKY_API_URL = process.env.LINKYVICKY_API_URL || 'https://api.linkyvicky.com';
@@ -8,6 +9,68 @@ const LINKYVICKY_API_KEY = process.env.LINKYVICKY_API_KEY || '';
 console.log("LinkyVicky API Configuration:");
 console.log("API URL:", LINKYVICKY_API_URL);
 console.log("API KEY:", LINKYVICKY_API_KEY ? "Available" : "Missing");
+
+/**
+ * Validate if LinkyVicky API is properly configured
+ */
+export function isLinkyVickyConfigured(): boolean {
+  return !!LINKYVICKY_API_KEY && !!LINKYVICKY_API_URL;
+}
+
+/**
+ * Test LinkyVicky API connection
+ */
+export async function testLinkyVickyConnection(): Promise<{
+  success: boolean;
+  message: string;
+  apiUrl?: string;
+}> {
+  if (!isLinkyVickyConfigured()) {
+    return {
+      success: false,
+      message: "LinkyVicky API is not configured. LINKYVICKY_API_KEY and/or LINKYVICKY_API_URL are missing.",
+    };
+  }
+  
+  try {
+    // Simplified health check endpoint
+    // We'll just use the shorten endpoint with a test URL
+    await axios.post(
+      `${LINKYVICKY_API_URL}/api/shorten`,
+      { url: "https://example.com/test" },
+      {
+        headers: {
+          'Authorization': `Bearer ${LINKYVICKY_API_KEY}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        timeout: 5000 // 5 second timeout for health check
+      }
+    );
+    
+    return {
+      success: true,
+      message: "LinkyVicky API connection successful",
+      apiUrl: LINKYVICKY_API_URL
+    };
+  } catch (error: any) {
+    let errorMessage = "Unknown error";
+    
+    if (error.response) {
+      errorMessage = `Status ${error.response.status}: ${error.response.data?.message || error.response.statusText}`;
+    } else if (error.request) {
+      errorMessage = "No response received from API. Service may be unavailable.";
+    } else {
+      errorMessage = error.message || "Request setup error";
+    }
+    
+    return {
+      success: false,
+      message: `LinkyVicky API connection failed: ${errorMessage}`,
+      apiUrl: LINKYVICKY_API_URL
+    };
+  }
+}
 
 // Interface for shortened URL response
 interface ShortenedUrlResponse {
