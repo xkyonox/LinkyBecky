@@ -736,6 +736,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
   
+  // Get current user endpoint - used by auth context
+  app.get("/api/auth/me", authenticate, async (req, res) => {
+    try {
+      console.log("🔍 GET /api/auth/me called with token auth");
+      
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      // Get user from storage with full profile
+      const user = await storage.getUser(req.user.id);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Return user data
+      res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        name: user.name || "",
+        bio: user.bio || "",
+        avatar: user.avatar || ""
+      });
+    } catch (error) {
+      console.error("❌ Error in /api/auth/me:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
   // User registration endpoint
   app.post("/api/users", async (req, res) => {
     try {
