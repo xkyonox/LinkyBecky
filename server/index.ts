@@ -316,6 +316,93 @@ app.use((req, res, next) => {
           }
         }
         
+        // Public profile endpoint - get a user by username
+        if (req.method === 'GET' && apiPath.startsWith('/users/')) {
+          try {
+            const username = apiPath.replace('/users/', '');
+            console.log(`Looking up public profile for username: ${username}`);
+            
+            // Get user from database
+            const userResult = await db.execute(sql`
+              SELECT id, username, email, name, bio, avatar
+              FROM users 
+              WHERE username = ${username}
+            `);
+            
+            if (!userResult.rows || userResult.rows.length === 0) {
+              return res.status(404).json({ 
+                error: 'User not found', 
+                message: `No user with username '${username}' exists`
+              });
+            }
+            
+            const user = userResult.rows[0];
+            console.log(`Found user: ${user.id} (${user.username})`);
+            
+            // Get user's profile settings
+            const profileResult = await db.execute(sql`
+              SELECT id, theme, background_color AS "backgroundColor", text_color AS "textColor", 
+                     font_family AS "fontFamily", social_links AS "socialLinks"
+              FROM profiles
+              WHERE user_id = ${user.id}
+            `);
+            
+            let profile = null;
+            if (profileResult.rows && profileResult.rows.length > 0) {
+              profile = profileResult.rows[0];
+              
+              // Parse socialLinks JSON if it's a string
+              if (typeof profile.socialLinks === 'string') {
+                try {
+                  profile.socialLinks = JSON.parse(profile.socialLinks);
+                } catch (e) {
+                  console.error('Error parsing socialLinks JSON:', e);
+                  profile.socialLinks = [];
+                }
+              } else if (!profile.socialLinks) {
+                profile.socialLinks = [];
+              }
+            } else {
+              // Create default profile if none exists
+              profile = {
+                theme: "light",
+                backgroundColor: "#7c3aed",
+                textColor: "#ffffff",
+                fontFamily: "Inter",
+                socialLinks: []
+              };
+            }
+            
+            // Get user's links
+            const linksResult = await db.execute(sql`
+              SELECT id, title, url, short_url AS "shortUrl", description, 
+                     icon_type AS "iconType", position, enabled
+              FROM links
+              WHERE user_id = ${user.id} AND enabled = true
+              ORDER BY position ASC
+            `);
+            
+            const links = linksResult.rows || [];
+            
+            // Return combined user info
+            return res.json({
+              id: user.id,
+              username: user.username,
+              name: user.name,
+              bio: user.bio,
+              avatar: user.avatar,
+              profile,
+              links
+            });
+          } catch (error) {
+            console.error("Error fetching user profile by username:", error);
+            return res.status(500).json({ 
+              error: 'Server error', 
+              message: 'Failed to fetch user profile'
+            });
+          }
+        }
+        
         // If no handler matched, return a 404
         return res.status(404).json({ 
           error: 'API endpoint not found',
