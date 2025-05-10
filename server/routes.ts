@@ -1,6 +1,8 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db"; // Import the database client
+import { sql } from "drizzle-orm"; // Import sql for raw queries
 import { authenticateToken, validateUser, generateToken, authenticateSession } from "./middleware/auth";
 import { shortenUrl, generateQrCode, getUrlAnalytics, addUtmParameters } from "./utils/linkyVicky";
 import { generateLinkSuggestions, generatePerformanceInsights, generateLinkOrderRecommendations } from "./utils/openai";
@@ -731,8 +733,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
   
+  // Test database endpoint
+  app.get("/api/test-db", async (req, res) => {
+    console.log("🔍 TEST DB ENDPOINT HIT");
+    try {
+      // Check if the 'users' table exists in the database
+      const tableCheckResult = await db.execute(sql`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        ORDER BY table_name;
+      `);
+      
+      const tables = tableCheckResult.rows || [];
+      console.log("✅ Available tables:", tables);
+      
+      // Only try to query users if the table exists
+      let userCount = 0;
+      try {
+        const userResult = await db.execute(sql`SELECT COUNT(*) FROM users`);
+        userCount = parseInt(userResult.rows?.[0]?.count as string || '0', 10);
+        console.log("✅ User count:", userCount);
+      } catch (err) {
+        console.warn("⚠️ Could not query users table:", err);
+      }
+      
+      res.json({
+        status: "Database connection successful",
+        tables: tables.map(row => row.table_name),
+        userCount
+      });
+    } catch (error: any) {
+      console.error("❌ Database test error:", error);
+      res.status(500).json({
+        status: "Database connection error",
+        error: error?.message || String(error)
+      });
+    }
+  });
+  
   // Username availability check
   app.get("/api/username/availability/:username", async (req, res) => {
+    console.log("🎯 USERNAME AVAILABILITY CHECK ENDPOINT HIT");
+    console.log("🎯 URL path:", req.url);
+    console.log("🎯 Cookies present:", !!req.headers.cookie);
+    console.log("🎯 Session ID:", req.sessionID || "none");
+    console.log("🎯 Request headers:", req.headers);
+    
     try {
       // Use the debug utility to show request details
       dumpRequestInfo(req, 'USERNAME AVAILABILITY CHECK');

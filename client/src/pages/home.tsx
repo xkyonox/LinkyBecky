@@ -69,7 +69,13 @@ export default function Home() {
       
       // Log detailed response information
       console.log(`✅ Username check response status: ${response.status}`);
-      console.log(`✅ Response headers:`, Object.fromEntries([...response.headers.entries()]));
+      
+      // Log response headers safely
+      const headerObj: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        headerObj[key] = value;
+      });
+      console.log(`✅ Response headers:`, headerObj);
       
       // Check if the response is successful
       if (!response.ok) {
@@ -115,6 +121,7 @@ export default function Home() {
     
     // First hit the status endpoint to verify basic connectivity and cookies
     try {
+      console.log("Step 1: Testing basic API connectivity");
       const statusResponse = await fetch('/api/status', {
         credentials: 'include',
         headers: {
@@ -127,11 +134,66 @@ export default function Home() {
       console.log("Status API response status:", statusResponse.status);
       const statusData = await statusResponse.json();
       console.log("Status API response:", statusData);
+
+      // Test database connection
+      console.log("Step 2: Testing database connectivity");
+      const dbResponse = await fetch('/api/test-db', {
+        credentials: 'include',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      
+      console.log("DB Test response status:", dbResponse.status);
+      if (dbResponse.ok) {
+        const dbData = await dbResponse.json();
+        console.log("Database test result:", dbData);
+      } else {
+        console.error("Database test failed:", await dbResponse.text());
+        toast({
+          title: "Database Error",
+          description: "There was a problem connecting to the database. Please try again later.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Try a direct raw access to username endpoint
+      console.log("Step 3: Testing direct URL access to username endpoint");
+      const rawResponse = await fetch(`/api/username/availability/${username}`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      
+      console.log("Raw username check status:", rawResponse.status);
+      if (rawResponse.ok) {
+        try {
+          const rawData = await rawResponse.json();
+          console.log("Raw username check result:", rawData);
+        } catch (e) {
+          console.error("Error parsing raw username check response:", e);
+        }
+      }
+      
     } catch (error) {
-      console.error("Error checking API status:", error);
+      console.error("Error checking API status or DB:", error);
+      toast({
+        title: "Connection Error",
+        description: "There was a problem connecting to the server. Please try again later.",
+        variant: "destructive"
+      });
+      return;
     }
     
-    // Now proceed with username check
+    // Now proceed with normal username check through our function
+    console.log("Step 4: Checking username availability through normal function");
     const isAvailable = await checkUsernameAvailability();
     console.log("Username availability result:", isAvailable);
     
