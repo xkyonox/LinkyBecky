@@ -139,7 +139,7 @@ export default function Home() {
                     id="username"
                     value={username}
                     onChange={handleUsernameChange}
-                    placeholder="yourcoolname"
+                    placeholder="oopsididit_hannes"
                     className="rounded-l-none"
                     disabled={isChecking}
                   />
