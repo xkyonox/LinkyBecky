@@ -19,6 +19,17 @@ import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import cors from "cors";
 
+// Helper function to dump request info for debugging
+function dumpRequestInfo(req: Request, title: string = 'Request Info') {
+  console.log(`\n 🔍 ${title.toUpperCase()} 🔍`);
+  console.log(`📍 URL: ${req.method} ${req.url}`);
+  console.log(`🍪 Cookies: ${req.headers.cookie || 'None'}`);
+  console.log(`🆔 Session ID: ${req.sessionID || 'None'}`);
+  console.log(`👤 Session User ID: ${req.session?.userId || 'None'}`);
+  console.log(`🔑 Authorization: ${req.headers.authorization ? 'Present' : 'None'}`);
+  console.log(`📦 Session Data: ${JSON.stringify(req.session, null, 2) || 'None'}`);
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
 
@@ -175,6 +186,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     "/api/auth/google/callback",
     passport.authenticate("google", { failureRedirect: "/" }),
     (req, res) => {
+      dumpRequestInfo(req, 'GOOGLE OAUTH CALLBACK');
+      
       // Ensure the user object exists
       if (!req.user) {
         console.error("❌ OAuth callback: User object is missing");
@@ -193,6 +206,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Save user ID to session
       req.session.userId = userId;
       
+      // Also save full user object as Passport expects (for deserialization)
+      req.session.passport = {
+        user: userId
+      };
+      
       // Force session save before redirecting
       req.session.save((err) => {
         if (err) {
@@ -201,10 +219,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         console.log(`✅ Session saved successfully with user ID: ${userId}`);
-        console.log(`Current session:`, req.session);
+        console.log(`Session cookie:`, req.session.cookie);
+        console.log(`Session ID: ${req.sessionID}`);
         
-        // Redirect to the frontend callback handler
-        res.redirect("/auth/callback");
+        // Try to regenerate session after save to ensure it persists
+        req.session.regenerate((regenerateErr) => {
+          if (regenerateErr) {
+            console.error("❌ Failed to regenerate session:", regenerateErr);
+          } else {
+            // Save user ID again in the new session
+            req.session.userId = userId;
+            req.session.passport = { user: userId };
+            console.log("✅ Session regenerated with fresh session ID:", req.sessionID);
+          }
+          
+          // Always redirect to the frontend callback handler
+          res.redirect("/auth/callback");
+        });
       });
     }
   );
@@ -213,21 +244,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Used during OAuth callback flow - removed authenticateSession middleware to debug
   app.get("/api/auth/token", async (req, res) => {
     try {
-      console.log("🔍 /api/auth/token called");
-      console.log("Session data:", req.session);
-      console.log("Session ID:", req.sessionID);
-      console.log("Cookies:", req.headers.cookie);
+      // Use our debug utility
+      dumpRequestInfo(req, 'TOKEN ENDPOINT');
       
-      // Get user from session
-      const userId = req.session?.userId;
+      // Check if we have a userId in:
+      // 1. Session directly
+      // 2. Session.passport.user (Passport.js standard)
+      let userId = req.session?.userId;
+      
+      if (!userId && req.session?.passport?.user) {
+        userId = req.session.passport.user;
+        console.log(`ℹ️ Using userId from passport: ${userId}`);
+      }
       
       if (!userId) {
-        console.error("❌ No userId in session");
+        console.error("❌ No userId in session - direct or passport");
         return res.status(401).json({ message: "Authentication required", details: "No user ID in session" });
       }
       
       console.log(`✅ Found userId in session: ${userId}`);
       
+      // Get user from database
       const user = await storage.getUser(userId);
       
       if (!user) {
@@ -236,6 +273,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       console.log(`✅ User found: ${user.username} (ID: ${user.id})`);
+      
+      // Now that we have verified the user, save it properly in the session
+      req.session.userId = user.id;
+      if (!req.session.passport) {
+        req.session.passport = { user: user.id };
+      }
       
       // Generate JWT token
       const token = generateToken({
@@ -254,7 +297,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         path: '/'
       });
       
-      res.json({ 
+      // Create response object
+      const responseData = { 
         token, 
         user: { 
           id: user.id, 
@@ -264,6 +308,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           bio: user.bio || "",
           avatar: user.avatar || ""
         } 
+      };
+      
+      // Save session before sending response to ensure changes are persisted
+      req.session.save((err) => {
+        if (err) {
+          console.error("❌ Error saving session:", err);
+          // Still return the data even if session save fails
+        } else {
+          console.log("✅ Session saved successfully");
+        }
+        
+        // Return response
+        res.json(responseData);
       });
     } catch (error) {
       console.error("❌ Error generating token:", error);
