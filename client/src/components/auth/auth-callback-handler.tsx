@@ -33,6 +33,33 @@ export function AuthCallbackHandler() {
             if (data.user && data.token) {
               // Update auth state with user data
               setAuth(data.user, data.token);
+              
+              // Check if this is a new user and create profile if needed
+              try {
+                // Try to get existing profile
+                const profileResponse = await apiRequest('GET', '/api/profile');
+                
+                // If profile doesn't exist (404), create a new one
+                if (!profileResponse.ok && profileResponse.status === 404) {
+                  console.log('Creating new profile for user with username:', username);
+                  
+                  // Create default profile with random purple background color
+                  const createProfileResponse = await apiRequest('POST', '/api/profile', {
+                    theme: 'default',
+                    backgroundColor: '#7c3aed', // Purple default
+                    textColor: '#ffffff',
+                    fontFamily: 'Inter',
+                    socialLinks: []
+                  });
+                  
+                  if (!createProfileResponse.ok) {
+                    console.error('Error creating initial profile:', await createProfileResponse.json());
+                  }
+                }
+              } catch (profileError) {
+                console.error('Error handling profile creation:', profileError);
+                // Continue with the flow even if profile creation fails
+              }
             }
 
             toast({
@@ -52,12 +79,14 @@ export function AuthCallbackHandler() {
         // Clear the stored username
         sessionStorage.removeItem('pendingUsername');
         
+        // Always redirect to dashboard after auth (even without username update)
         // Add a small delay before redirect to ensure state is updated
         setTimeout(() => {
+          console.log('Redirecting to dashboard...');
           // Redirect to dashboard
           setLocation('/dashboard');
           isProcessingCallback = false;
-        }, 100);
+        }, 300);
       } catch (error) {
         console.error('Error in auth callback:', error);
         toast({

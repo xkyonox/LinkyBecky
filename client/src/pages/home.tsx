@@ -16,7 +16,7 @@ export default function Home() {
   }>({ type: null, message: "" });
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   // Store username in sessionStorage to retrieve after login
   useEffect(() => {
@@ -100,7 +100,7 @@ export default function Home() {
             </h1>
           </div>
           <div>
-            {isAuthenticated ? (
+            {user?.id ? (
               <Button asChild variant="default">
                 <Link href="/dashboard">Dashboard</Link>
               </Button>
