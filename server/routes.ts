@@ -22,27 +22,38 @@ import cors from "cors";
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
 
-  // Setup CORS
+  // Setup CORS - ensure it runs before session middleware
   app.use(cors({
-    // Allow requests from all origins in development, specific domain in production
+    // Allow any origin in development, specific domain in production
     origin: process.env.NODE_ENV === "production" 
       ? ["https://linkybecky.replit.app"] 
       : true,
-    credentials: true, // Allow credentials (cookies, authorization headers)
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true, // Essential for cookies/auth to work cross-domain
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With'],
+    exposedHeaders: ['Set-Cookie'],
   }));
   
-  // Set up session middleware
+  // Add a middleware to add the proper headers for cookies
+  app.use((req, res, next) => {
+    // Ensure proper headers are set for cookies to work
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    next();
+  });
+  
+  // Set up session middleware with improved cookie settings
   app.use(
     session({
       secret: process.env.SESSION_SECRET || "linky-becky-session-secret",
-      resave: false,
-      saveUninitialized: false,
+      resave: true, // Force session to be saved back to the store
+      saveUninitialized: true, // Save uninitialized sessions
+      rolling: true, // Force cookie to be set on every response
+      name: 'linkybecky.sid', // Custom cookie name to avoid conflicts
       cookie: { 
-        secure: process.env.NODE_ENV === "production", // Only use secure in production
+        secure: false, // Set to false even in production for now (troubleshooting)
         httpOnly: true, // Prevent client-side JS from reading the cookie
-        sameSite: process.env.NODE_ENV === "production" ? 'none' : 'lax', // Allow cross-site cookies in production
+        sameSite: 'lax', // Changed from 'none' for better compatibility
+        path: '/', // Ensure cookie is available for all paths
         maxAge: 1000 * 60 * 60 * 24 * 7 // 1 week
       }
     })
