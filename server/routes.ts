@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { authenticateToken, validateUser, generateToken, authenticateSession } from "./middleware/auth";
+import { authenticate } from "./middleware/simpleAuth";
 import { shortenUrl, generateQrCode, getUrlAnalytics, addUtmParameters } from "./utils/linkyVicky";
 import { getSystemHealth } from "./utils/health";
 import { generateLinkSuggestions, generatePerformanceInsights, generateLinkOrderRecommendations } from "./utils/openai";
@@ -18,6 +19,8 @@ import session from "express-session";
 import { z, ZodError } from "zod";
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
+import { setupAuth, isAuthenticated } from "./replitAuth";
+import authRoutes from "./routes/authRoutes";
 import { fromZodError } from "zod-validation-error";
 import cors from "cors";
 import path from "path";
@@ -42,13 +45,8 @@ function dumpRequestInfo(req: Request, title: string = 'Request Info') {
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
-  // Set up Replit authentication
-  try {
-    await setupAuth(app);
-    console.log("✅ Replit Auth setup completed successfully");
-  } catch (error) {
-    console.error("❌ Error setting up Replit Auth:", error);
-  }
+  // Set up auth routes
+  app.use('/api/auth', authRoutes);
   
   // Create an API router
   const apiRouter = express.Router();
