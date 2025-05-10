@@ -94,6 +94,35 @@ router.get('/me', authenticate, (req: Request, res: Response) => {
   }
 });
 
+// Validate token endpoint - just returns user data if the token is valid
+router.get('/validate', authenticate, (req: Request, res: Response) => {
+  try {
+    // If we get here, the token is valid (authenticate middleware validated it)
+    // Check if user data exists in req.user
+    if (!req.user) {
+      return res.status(401).json({ 
+        error: 'Invalid token',
+        isValid: false
+      });
+    }
+    
+    return res.json({
+      user: {
+        id: req.user.id,
+        email: req.user.email,
+        username: req.user.username
+      },
+      isValid: true
+    });
+  } catch (error) {
+    console.error('Error in /auth/validate:', error);
+    return res.status(401).json({ 
+      error: 'Invalid token',
+      isValid: false
+    });
+  }
+});
+
 // Login endpoint - authenticates user with email and password
 router.post('/login', async (req: Request, res: Response) => {
   try {
