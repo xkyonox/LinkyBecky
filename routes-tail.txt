@@ -1,0 +1,20 @@
+    console.log(`Caught request for user profile: @${req.params.username}`);
+    
+    // In development mode, let Vite handle this
+    if (process.env.NODE_ENV === 'development') {
+      return next();
+    }
+    
+    // In production, we need to manually serve the index.html file
+    try {
+      const distPath = path.resolve(import.meta.dirname, "public");
+      console.log(`Serving index.html from ${distPath} for profile @${req.params.username}`);
+      return res.sendFile(path.resolve(distPath, "index.html"));
+    } catch (error) {
+      console.error('Error serving index.html for profile page:', error);
+      next(error);
+    }
+  });
+
+  return httpServer;
+}
