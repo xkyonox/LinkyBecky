@@ -4,6 +4,7 @@ import { setupVite, serveStatic, log } from "./vite";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import jwt from "jsonwebtoken";
+import cors from "cors";
 
 // JWT functions
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-change-in-production';
@@ -39,6 +40,16 @@ function getUserFromToken(req: Request): { id: number; email: string; username: 
 }
 
 const app = express();
+
+// Configure CORS
+app.use(cors({
+  origin: true, // Allow requests from any origin in development
+  credentials: true, // Allow cookies to be sent with requests
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
+
+// Parse JSON request bodies
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
