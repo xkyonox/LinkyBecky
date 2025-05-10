@@ -23,7 +23,22 @@ export function useAuth() {
     retry: false,
     refetchOnWindowFocus: false,
     // Default to not authenticated if request fails
-    initialData: { isAuthenticated: false, user: null } 
+    initialData: { isAuthenticated: false, user: null },
+    // Explicitly include credentials to ensure cookies are sent
+    queryFn: async ({ queryKey }) => {
+      const response = await fetch(queryKey[0] as string, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
+        }
+      });
+      if (!response.ok) {
+        return { isAuthenticated: false, user: null };
+      }
+      return response.json();
+    }
   });
 
   useEffect(() => {

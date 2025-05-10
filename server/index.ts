@@ -49,7 +49,9 @@ const app = express();
 
 // Configure CORS with enhanced options for better compatibility
 app.use(cors({
-  origin: true, // Allow requests from any origin in development
+  origin: process.env.NODE_ENV === 'production' 
+    ? ['https://linkybecky.replit.app'] // Explicitly set allowed origins in production
+    : true, // Allow requests from any origin in development
   credentials: true, // Allow cookies to be sent with requests
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: [
@@ -92,11 +94,14 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   name: 'linkybecky.sid',
+  proxy: process.env.NODE_ENV === 'production', // Trust the reverse proxy in production (Replit handles this)
   cookie: {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 1 week
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
+    path: '/',
+    domain: process.env.NODE_ENV === 'production' ? '.replit.app' : undefined
   }
 }));
 
