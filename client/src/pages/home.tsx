@@ -124,14 +124,13 @@ export default function Home() {
           <div className="max-w-md mx-auto bg-white p-6 rounded-lg shadow-lg border border-border">
             <div className="space-y-4">
               <div className="space-y-2 text-center">
-                <h2 className="text-2xl font-bold">Claim Your Page</h2>
+                <h2 className="text-2xl font-bold">LinkyBecky: Where Your Story Begins</h2>
                 <p className="text-muted-foreground">
-                  Choose your unique username to get started
+                  Pick a Name for Your Page
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
                 <div className="flex items-center">
                   <span className="bg-muted px-3 py-2 rounded-l-md border-y border-l border-input">
                     @
