@@ -43,25 +43,39 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
   
   // Fetch user data if token exists
-  const { data: user, isLoading } = useQuery<User>({
+  const { data: user, isLoading, error: userError } = useQuery<User>({
     queryKey: ['/api/auth/me'],
     enabled: !!token,
-    retry: false,
-    staleTime: 300000, // 5 minutes,
+    retry: 1,
+    retryDelay: 1000,
+    staleTime: 300000, // 5 minutes
+    // Use default queryFn from queryClient.ts, but with explicit handling for debugging
     queryFn: async () => {
-      // Explicitly pass the token in the authorization header
-      const response = await fetch('/api/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`
+      console.log('AuthContext: Fetching user data with token', token ? `(length: ${token.length})` : '(missing)');
+      
+      try {
+        // Explicitly pass the token in the authorization header
+        const response = await fetch('/api/auth/me', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        console.log('AuthContext: /api/auth/me response status:', response.status);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('AuthContext: Failed to fetch user data:', errorText);
+          throw new Error(`Failed to fetch user data: ${response.status} ${errorText}`);
         }
-      });
-      
-      if (!response.ok) {
-        console.error('Failed to fetch user data from /api/auth/me:', await response.text());
-        throw new Error('Failed to fetch user data');
+        
+        const userData = await response.json();
+        console.log('AuthContext: User data received:', userData);
+        return userData;
+      } catch (error) {
+        console.error('AuthContext: Error in user fetch queryFn:', error);
+        throw error;
       }
-      
-      return response.json();
     }
   });
   

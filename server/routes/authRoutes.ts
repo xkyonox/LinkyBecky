@@ -94,17 +94,27 @@ const usernameSchema = z.object({
 
 // Get the currently authenticated user
 router.get('/me', authenticate, (req: Request, res: Response) => {
+  console.log('\n===== /API/AUTH/ME ENDPOINT =====');
+  console.log('Headers:', req.headers);
+  console.log('Auth header:', req.headers.authorization);
+  
   try {
     // req.user is set by the authenticate middleware
     if (!req.user) {
+      console.log('User NOT authenticated - req.user is null');
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    return res.json({
+    console.log('User authenticated:', req.user);
+    const responseData = {
       id: req.user.id,
       email: req.user.email,
       username: req.user.username
-    });
+    };
+    console.log('Returning user data:', responseData);
+    console.log('===== END /API/AUTH/ME =====\n');
+    
+    return res.json(responseData);
   } catch (error) {
     console.error('Error in /auth/me:', error);
     return res.status(500).json({ error: 'Server error' });

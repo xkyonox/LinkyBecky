@@ -108,8 +108,17 @@ export default function Login() {
 
   const handleGoogleLogin = () => {
     console.log("Redirecting to Google OAuth flow...");
+    
+    // Generate a random sequence to use as state for CSRF protection
+    const stateParam = Math.random().toString(36).substring(2, 15);
+    localStorage.setItem('oauth_state', stateParam);
+    
     // This is the endpoint handled by Passport in server/routes.ts
-    window.location.href = "/api/auth/google";
+    const googleAuthUrl = `/api/auth/google?state=${stateParam}`;
+    console.log(`Navigating to Google auth URL: ${googleAuthUrl}`);
+    
+    // Redirect to Google auth endpoint
+    window.location.href = googleAuthUrl;
   };
 
   return (
