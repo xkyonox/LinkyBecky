@@ -1,181 +1,45 @@
 import { useEffect, useState } from "react";
-import { useAuthStore } from "@/lib/store";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuthStore } from "@/lib/store";
 
 export function useAuth() {
-  const { user, token, isAuthenticated, setAuth, clearAuth } = useAuthStore();
+  const { user: tokenUser, token, isAuthenticated: isTokenAuth, setAuth, clearAuth } = useAuthStore();
   const [isLoading, setIsLoading] = useState(true);
-
-  // Define type for user data from session or token endpoints
-  interface AuthUserData {
-    id: number;
-    username: string;
-    email: string;
-    name: string;
-    bio?: string;
-    avatar?: string;
-    token?: string;
-  }
-
-  // Try to retrieve auth status using cookie session first, then fallback to token
-  const { data: sessionData, isError: sessionError, isLoading: sessionLoading } = useQuery<AuthUserData | null>({
-    queryKey: ["/api/auth/me-from-session"],
-    retry: 1,
-    refetchOnMount: true,
+  
+  // Check session-based authentication
+  const { 
+    data: sessionData,
+    isLoading: isSessionLoading,
+    error: sessionError
+  } = useQuery({ 
+    queryKey: ['/api/auth/me-from-session'],
+    retry: false,
     refetchOnWindowFocus: false,
-    staleTime: 1000 * 60 * 5, // 5 minutes
-  });
-
-  // Check if token is valid only if we don't have session data
-  const { data: tokenData, isError: tokenError } = useQuery<AuthUserData | null>({
-    queryKey: ["/api/auth/me"],
-    enabled: !!token && !sessionData && !sessionLoading,
-    retry: false
   });
 
   useEffect(() => {
-    console.log('Auth status check - session data:', sessionData);
-    console.log('Auth status check - token data:', tokenData);
-    console.log('Auth status check - isAuthenticated:', isAuthenticated);
-    
-    if (sessionData) {
-      // If we have session data, use it
-      console.log('Setting auth from session data');
-      // Ensure we have all the required user fields
-      const userData = {
-        id: sessionData.id,
-        username: sessionData.username,
-        email: sessionData.email,
-        name: sessionData.name,
-        bio: sessionData.bio || "",
-        avatar: sessionData.avatar || ""
-      };
-      setAuth(userData, sessionData.token || token || '');
-      setIsLoading(false);
-    } else if (token) {
-      if (tokenError) {
-        // Token is invalid, clear auth
-        console.log('Token is invalid, clearing auth');
-        clearAuth();
-        setIsLoading(false);
-      } else if (tokenData) {
-        // Token is valid, update user data
-        console.log('Setting auth from token data');
-        // Ensure we have all the required user fields
-        const userData = {
-          id: tokenData.id,
-          username: tokenData.username,
-          email: tokenData.email,
-          name: tokenData.name,
-          bio: tokenData.bio || "",
-          avatar: tokenData.avatar || ""
-        };
-        setAuth(userData, token);
-        setIsLoading(false);
-      }
-    } else {
-      // No token and no session data
-      console.log('No token and no session data');
-      setIsLoading(false);
-    }
-  }, [token, tokenData, tokenError, sessionData, sessionError, sessionLoading, isAuthenticated, setAuth, clearAuth]);
+    console.log("Auth status check - session data:", sessionData?.user);
+    console.log("Auth status check - token data:", tokenUser);
+    console.log("Auth status check - isAuthenticated:", isTokenAuth || !!sessionData?.isAuthenticated);
 
-  // Login function
-  const login = async (email: string, password: string) => {
-    try {
-      const response = await apiRequest("POST", "/api/auth/login", { email, password });
-      const data = await response.json();
-      setAuth(data.user, data.token);
-      return { success: true };
-    } catch (error) {
-      console.error("Login error:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "An error occurred during login"
-      };
-    }
-  };
-
-  // Register function
-  const register = async (userData: {
-    username: string;
-    email: string;
-    password: string;
-    name: string;
-  }) => {
-    try {
-      const response = await apiRequest("POST", "/api/auth/register", userData);
-      const data = await response.json();
-      setAuth(data.user, data.token);
-      return { success: true };
-    } catch (error) {
-      console.error("Registration error:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "An error occurred during registration"
-      };
-    }
-  };
-
-  // Logout function
-  const logout = async () => {
-    try {
-      // Log the logout attempt
-      console.log("Initiating logout process...");
-      
-      // Call the logout API endpoint to destroy the server session
-      await apiRequest("POST", "/api/auth/logout", {});
-      console.log("Server logout API called successfully");
-      
-      // Clear the auth state from Zustand store
+    if (!tokenUser && !token && sessionData?.isAuthenticated && sessionData.user) {
+      console.log("Found authenticated session but no token - syncing auth store");
+      // User is authenticated via session but not via token, sync the auth store
+      setAuth(sessionData.user, "");
+    } else if (!sessionData?.isAuthenticated && tokenUser) {
+      console.log("No token and no session data");
+      // Session is not authenticated but token exists, clear token
       clearAuth();
-      console.log("Auth state cleared from Zustand store");
-      
-      // Clear various storages that might contain auth data
-      try {
-        localStorage.removeItem('auth-storage');
-        localStorage.removeItem('query-cache');
-        sessionStorage.removeItem('pendingUsername');
-        
-        // Clear all cookies by setting expired dates
-        document.cookie.split(";").forEach(cookie => {
-          const name = cookie.split("=")[0].trim();
-          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-        });
-        
-        console.log("Local storage, session storage and cookies cleared");
-      } catch (storageError) {
-        console.error("Error clearing storages:", storageError);
-      }
-      
-      // Invalidate all queries in the query client cache
-      queryClient.invalidateQueries();
-      queryClient.clear();
-      console.log("Query client cache cleared");
-      
-      return { success: true };
-    } catch (error) {
-      console.error("Logout error:", error);
-      
-      // Even if API call fails, try to clean up locally
-      clearAuth();
-      localStorage.removeItem('auth-storage');
-      queryClient.clear();
-      
-      return {
-        success: true, // Return success anyway so UI can proceed with redirect
-        error: error instanceof Error ? error.message : "An error occurred during logout"
-      };
     }
-  };
 
+    setIsLoading(false);
+  }, [sessionData, tokenUser, token, isTokenAuth, setAuth, clearAuth]);
+  
   return {
-    user,
-    isAuthenticated,
-    isLoading,
-    login,
-    register,
-    logout
+    user: tokenUser || (sessionData?.isAuthenticated ? sessionData.user : null),
+    token,
+    isLoading: isLoading || isSessionLoading,
+    isAuthenticated: isTokenAuth || !!sessionData?.isAuthenticated,
+    error: sessionError,
   };
 }

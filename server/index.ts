@@ -8,6 +8,9 @@ import cors from "cors";
 import session from "express-session";
 import { pool } from "./db";
 import ConnectPgSimple from "connect-pg-simple";
+import passport from "passport";
+import { Strategy as GoogleStrategy } from "passport-google-oauth20";
+import { storage } from "./storage";
 
 // JWT functions
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-change-in-production';
@@ -73,6 +76,57 @@ app.use((req, res, next) => {
 // Parse JSON request bodies
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Configure session store with PostgreSQL
+const PgSessionStore = ConnectPgSimple(session);
+const sessionStore = new PgSessionStore({
+  pool: pool,
+  tableName: 'sessions',
+  createTableIfMissing: true
+});
+
+// Set up session middleware
+app.use(session({
+  store: sessionStore,
+  secret: process.env.SESSION_SECRET || 'linkybecky-session-secret', 
+  resave: false,
+  saveUninitialized: false,
+  name: 'linkybecky.sid',
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 1 week
+  }
+}));
+
+// Debug session information
+app.use((req, res, next) => {
+  console.log("Debug - Session ID:", req.sessionID);
+  console.log("Debug - Session data:", req.session);
+  console.log("Debug - Cookies:", req.headers.cookie);
+  next();
+});
+
+// Initialize Passport and restore authentication state from session
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Serialize user information to and from the session
+passport.serializeUser((user: any, done) => {
+  done(null, user.id);
+});
+
+passport.deserializeUser(async (id: number, done) => {
+  try {
+    // Retrieve user from database using the storage interface
+    const user = await storage.getUser(id);
+    done(null, user || null);
+  } catch (err) {
+    console.error('Error deserializing user:', err);
+    done(err, null);
+  }
+});
 
 app.use((req, res, next) => {
   const start = Date.now();

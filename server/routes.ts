@@ -49,6 +49,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // We already have CORS configured in index.ts, so we don't need to configure it again here.
   // Keeping this comment to document that CORS is intentionally configured only once.
   
+  // Endpoint to check auth status from session
+  apiRouter.get('/auth/me-from-session', (req: Request, res: Response) => {
+    try {
+      console.log("[express] Session auth check - Session:", req.session);
+      console.log("[express] Session auth check - User:", req.user);
+      console.log("[express] Session auth check - Is Authenticated:", req.isAuthenticated());
+      
+      if (req.isAuthenticated() && req.user) {
+        // User is logged in via session
+        res.json({ 
+          isAuthenticated: true, 
+          user: req.user 
+        });
+      } else {
+        // No authenticated user found in session
+        res.json({ 
+          isAuthenticated: false,
+          user: null
+        });
+      }
+    } catch (error) {
+      console.error("Error in /auth/me-from-session:", error);
+      res.status(500).json({ 
+        isAuthenticated: false,
+        error: "Internal server error checking authentication status"
+      });
+    }
+  });
+  
   // Headers for cookies
   app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Credentials', 'true');
