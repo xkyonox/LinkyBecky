@@ -115,7 +115,50 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       isAuthenticated: false,
-      setAuth: (user, token) => set({ user, token, isAuthenticated: true }),
+      setAuth: (user, token) => {
+        console.log('AuthStore: Setting auth with token...');
+        
+        // Check if token looks like a JWT
+        if (token) {
+          const isValidJwtFormat = 
+            typeof token === 'string' && 
+            token.startsWith('eyJ') && 
+            (token.match(/\./g) || []).length === 2;
+          
+          console.log('AuthStore: Token format valid:', isValidJwtFormat);
+          
+          if (!isValidJwtFormat) {
+            console.error('AuthStore: WARNING - Token does not appear to be in valid JWT format!');
+          }
+        } else {
+          console.error('AuthStore: ERROR - No token provided to setAuth!');
+        }
+        
+        // Set the state
+        set({ user, token, isAuthenticated: true });
+        
+        // Verify it was stored properly
+        setTimeout(() => {
+          const authStorage = localStorage.getItem('auth-storage');
+          if (authStorage) {
+            try {
+              const parsed = JSON.parse(authStorage);
+              // Log the structure in a more readable way
+              console.log('AuthStore: Verified storage structure:', JSON.stringify(parsed, null, 2));
+              const storedToken = parsed?.state?.token;
+              console.log('AuthStore: Token in storage:', storedToken ? 'Present' : 'Missing!');
+              
+              if (storedToken) {
+                console.log('AuthStore: First 10 chars of stored token:', storedToken.substring(0, 10) + '...');
+              }
+            } catch (e) {
+              console.error('AuthStore: Error verifying storage:', e);
+            }
+          } else {
+            console.error('AuthStore: No auth-storage found after setting!');
+          }
+        }, 100);
+      },
       clearAuth: () => set({ user: null, token: null, isAuthenticated: false }),
     }),
     {

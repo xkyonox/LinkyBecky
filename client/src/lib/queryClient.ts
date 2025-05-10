@@ -19,9 +19,29 @@ export async function apiRequest(
   
   try {
     if (authStorageRaw) {
+      // Log exact structure of localStorage['auth-storage']
+      console.log('auth-storage structure:', JSON.parse(authStorageRaw));
+      
       const authStorage = JSON.parse(authStorageRaw);
       token = authStorage?.state?.token;
-      console.log('Parsed token from localStorage:', token ? 'Present (not shown for security)' : 'Missing');
+      
+      // Check if token is in expected format (JWT)
+      if (token) {
+        // Check if it looks like a JWT (starts with eyJ and has two dots)
+        const isValidJwtFormat = 
+          typeof token === 'string' && 
+          token.startsWith('eyJ') && 
+          (token.match(/\./g) || []).length === 2;
+        
+        console.log('Token format valid:', isValidJwtFormat);
+        console.log('Token first 10 chars:', token.substring(0, 10) + '...');
+        
+        if (!isValidJwtFormat) {
+          console.error('Token does not appear to be in valid JWT format!');
+        }
+      } else {
+        console.log('Token is missing from auth storage state');
+      }
     } else {
       console.log('No auth-storage found in localStorage');
     }
@@ -76,9 +96,29 @@ export const getQueryFn: <T>(options: {
     
     try {
       if (authStorageRaw) {
+        // Log exact structure of localStorage['auth-storage']
+        console.log('Query - auth-storage structure:', JSON.parse(authStorageRaw));
+        
         const authStorage = JSON.parse(authStorageRaw);
         token = authStorage?.state?.token;
-        console.log('Query - Parsed token from localStorage:', token ? 'Present (not shown for security)' : 'Missing');
+        
+        // Check if token is in expected format (JWT)
+        if (token) {
+          // Check if it looks like a JWT (starts with eyJ and has two dots)
+          const isValidJwtFormat = 
+            typeof token === 'string' && 
+            token.startsWith('eyJ') && 
+            (token.match(/\./g) || []).length === 2;
+          
+          console.log('Query - Token format valid:', isValidJwtFormat);
+          console.log('Query - Token first 10 chars:', token.substring(0, 10) + '...');
+          
+          if (!isValidJwtFormat) {
+            console.error('Query - Token does not appear to be in valid JWT format!');
+          }
+        } else {
+          console.log('Query - Token is missing from auth storage state');
+        }
       } else {
         console.log('Query - No auth-storage found in localStorage');
       }

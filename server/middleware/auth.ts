@@ -46,6 +46,16 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
   }
 
   try {
+    console.log("Attempting to verify token...");
+    
+    // Check token format before verification
+    if (typeof token === 'string' && token.startsWith('eyJ') && (token.match(/\./g) || []).length === 2) {
+      console.log("Token appears to be in valid JWT format");
+    } else {
+      console.error("Token does not appear to be in valid JWT format!");
+      console.log("Token first 10 chars:", token?.substring(0, 10) + '...');
+    }
+    
     const decoded = jwt.verify(token, JWT_SECRET) as {
       id: number;
       email: string;
@@ -53,6 +63,7 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
     };
     
     console.log("Token verified successfully for user ID:", decoded.id);
+    console.log("Token contains username:", decoded.username);
     req.user = decoded;
     next();
   } catch (error) {
