@@ -78,9 +78,12 @@ export const AuthCallbackHandler = () => {
             variant: "default"
           });
           
-          // Redirect to dashboard
-          console.log("Redirecting to dashboard...");
-          setLocation("/dashboard");
+          // Redirect to dashboard with a small delay to allow token to be processed
+          console.log("Scheduling redirect to dashboard...");
+          setTimeout(() => {
+            console.log("Now redirecting to dashboard...");
+            setLocation("/dashboard");
+          }, 500);
           return;
         }
         
