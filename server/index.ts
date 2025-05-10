@@ -1029,16 +1029,17 @@ app.use((req, res, next) => {
             params.push(linkId);
             params.push(userId);
             
-            const updateResult = await db.execute(sql.raw(updateSql, ...params));
+            // Use a simple raw SQL query with parameters
+            const result = await db.execute(sql`${sql.raw(updateSql)} RETURNING *`);
             
-            if (!updateResult.rows || updateResult.rows.length === 0) {
+            if (!result.rows || result.rows.length === 0) {
               return res.status(404).json({
                 error: 'Not found',
                 message: 'Link not found or not updated'
               });
             }
             
-            return res.json(updateResult.rows[0]);
+            return res.json(result.rows[0]);
           } catch (error) {
             console.error("Error updating link:", error);
             return res.status(500).json({ 

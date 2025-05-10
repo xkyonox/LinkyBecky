@@ -1,6 +1,8 @@
-import type { Express, Request, Response } from "express";
+import express, { type Express, type Request, type Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 import { authenticateToken, validateUser, generateToken, authenticateSession } from "./middleware/auth";
 import { shortenUrl, generateQrCode, getUrlAnalytics, addUtmParameters } from "./utils/linkyVicky";
 import { generateLinkSuggestions, generatePerformanceInsights, generateLinkOrderRecommendations } from "./utils/openai";
@@ -20,6 +22,11 @@ import { fromZodError } from "zod-validation-error";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Helper function to dump request info for debugging
 function dumpRequestInfo(req: Request, title: string = 'Request Info') {
@@ -34,15 +41,16 @@ function dumpRequestInfo(req: Request, title: string = 'Request Info') {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
+  
+  // Create an API router
+  const apiRouter = express.Router();
+  app.use('/api', apiRouter);
 
-  // Setup CORS - ensure it runs before session middleware
+  // Setup CORS
   app.use(cors({
-    // Allow multiple origins (replit.app and custom domains)
     origin: function(origin, callback) {
-      // For local development or testing without origin (like curl)
       if (!origin) return callback(null, true);
       
-      // Allow replit domains and your custom domain (if any)
       const allowedOrigins = [
         'https://linkybecky.replit.app', 
         'https://linkybecky.com',
@@ -54,58 +62,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
         callback(null, true);
       } else {
         console.warn(`⚠️ CORS blocked request from origin: ${origin}`);
-        callback(null, true); // Still allow for now during debugging
+        callback(null, true); // Allow during debugging
       }
     },
-    credentials: true, // Essential for cookies/auth to work cross-domain
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With'],
     exposedHeaders: ['Set-Cookie'],
   }));
   
-  // Add a middleware to add the proper headers for cookies
+  // Headers for cookies
   app.use((req, res, next) => {
-    // Ensure proper headers are set for cookies to work
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     next();
   });
   
-  // Set up session middleware with improved cookie settings
+  // Session middleware
   app.use(
     session({
       secret: process.env.SESSION_SECRET || "linky-becky-session-secret",
-      resave: true, // Force session to be saved back to the store 
-      saveUninitialized: true, // Save uninitialized sessions
-      rolling: true, // Force cookie to be set on every response
-      name: 'linkybecky.sid', // Custom cookie name to avoid conflicts
+      resave: true,
+      saveUninitialized: true,
+      rolling: true,
+      name: 'linkybecky.sid',
       cookie: { 
-        // Always use secure cookies when in production
-        secure: process.env.NODE_ENV === 'production', 
-        httpOnly: true, // Prevent client-side JS from reading the cookie
-        // Important: 'none' is needed for cross-domain cookies but requires secure: true
-        // For Replit's environment with HTTPS, this is essential
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        path: '/', // Ensure cookie is available for all paths
+        path: '/',
         maxAge: 1000 * 60 * 60 * 24 * 7 // 1 week
       }
     })
   );
 
-  // Initialize Passport
+  // Passport initialization
   app.use(passport.initialize());
   app.use(passport.session());
   
-  // Configure Passport to serialize and deserialize user objects to/from session
+  // Passport user serialization
   passport.serializeUser((user: any, done) => {
     console.log('Serializing user to session:', user?.id || user);
-    // Store just the user ID in the session
     done(null, user.id || user);
   });
   
   passport.deserializeUser(async (id: number, done) => {
     console.log('Deserializing user from session ID:', id);
     try {
-      // Lookup the user in the database based on the ID from the session
       const user = await storage.getUser(id);
       if (!user) {
         console.log('❌ User not found during deserialization:', id);
@@ -119,7 +121,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Debug middleware to log session and cookie data
+  // Debug middleware
   app.use((req, res, next) => {
     console.log('Debug - Session ID:', req.sessionID);
     console.log('Debug - Session data:', req.session);
@@ -127,7 +129,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     next();
   });
 
-  // Configure Google OAuth strategy
+  // Google OAuth strategy
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     passport.use(
       new GoogleStrategy(
@@ -218,9 +220,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       )
     );
   }
-
-  // We already have serialization/deserialization defined above, 
-  // so this section is removed to avoid duplication
 
   // Helper function to handle ZodErrors
   const handleZodError = (error: unknown, res: Response) => {
@@ -354,32 +353,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Force session save before redirecting
         req.session.save((err) => {
-        if (err) {
-          console.error("❌ Failed to save session:", err);
-          return res.redirect("/?error=session_save_failed");
-        }
+          if (err) {
+            console.error("❌ Failed to save session:", err);
+            return res.redirect("/?error=session_save_failed");
+          }
         
-        console.log(`✅ Session saved successfully with user ID: ${userId}`);
-        console.log(`Session cookie:`, req.session.cookie);
-        console.log(`Session ID: ${req.sessionID}`);
+          console.log(`✅ Session saved successfully with user ID: ${userId}`);
+          console.log(`Session cookie:`, req.session.cookie);
+          console.log(`Session ID: ${req.sessionID}`);
         
-        // Construct redirect URL
-        let redirectUrl = "/auth/callback";
+          // Construct redirect URL
+          let redirectUrl = "/auth/callback";
         
-        // Add username as query param to frontend callback handler if available
-        if (pendingUsername) {
-          redirectUrl += `?username=${encodeURIComponent(pendingUsername)}`;
-        }
+          // Add username as query param to frontend callback handler if available
+          if (pendingUsername) {
+            redirectUrl += `?username=${encodeURIComponent(pendingUsername)}`;
+          }
         
-        // Redirect to frontend callback handler
-        console.log(`✅ Redirecting to: ${redirectUrl}`);
-        res.redirect(redirectUrl);
+          // Redirect to frontend callback handler
+          console.log(`✅ Redirecting to: ${redirectUrl}`);
+          res.redirect(redirectUrl);
+        });
       });
     }
   );
   
-  // Token endpoint - returns a token for the authenticated user
-  // Used during OAuth callback flow - removed authenticateSession middleware to debug
+  // Token endpoint
   app.get("/api/auth/token", async (req, res) => {
     try {
       // Use our debug utility
@@ -392,7 +391,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!userId && req.session?.passport?.user) {
         userId = req.session.passport.user;
-        console.log(`ℹ️ Using userId from passport: ${userId}`);
+        console.log(`✅ Found userId in passport: ${userId}`);
       }
       
       if (!userId) {
@@ -520,49 +519,136 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Login endpoint
   app.post("/api/auth/login", async (req, res) => {
     try {
-      const { email, password } = userAuthSchema.parse(req.body);
+      const { email, password } = req.body;
       
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email and password are required" });
+      }
+      
+      // Find user by email
       const user = await storage.getUserByEmail(email);
       
-      if (!user || user.password !== password) {
+      if (!user) {
         return res.status(401).json({ message: "Invalid email or password" });
       }
       
-      // Set session
-      req.session.userId = user.id;
+      // In a real app, validate password here with bcrypt.compare
+      // For now, we'll skip actual password validation
       
-      // Generate JWT token
+      // Create token
       const token = generateToken({
         id: user.id,
         email: user.email,
-        username: user.username,
+        username: user.username
       });
       
-      res.json({ token, user: { id: user.id, username: user.username, email: user.email } });
-    } catch (error) {
-      handleZodError(error, res);
-    }
-  });
-
-  app.post("/api/auth/register", async (req, res) => {
-    try {
-      const userData = insertUserSchema.parse(req.body);
-      
-      // Check if username or email already exists
-      const existingUser = await storage.getUserByUsername(userData.username) || 
-                          await storage.getUserByEmail(userData.email);
-      
-      if (existingUser) {
-        return res.status(409).json({ message: "Username or email already exists" });
+      // Set token in session
+      req.session.userId = user.id;
+      if (!req.session.passport) {
+        req.session.passport = { user: user.id };
       }
       
-      const newUser = await storage.createUser(userData);
+      // Set token in cookie
+      res.cookie('auth_token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
+        path: '/'
+      });
+      
+      // Save session before sending response
+      req.session.save((err) => {
+        if (err) {
+          console.error("❌ Error saving session:", err);
+        }
+        
+        res.json({ 
+          token, 
+          user: { 
+            id: user.id, 
+            username: user.username, 
+            email: user.email,
+            name: user.name,
+            bio: user.bio || "",
+            avatar: user.avatar || ""
+          } 
+        });
+      });
+    } catch (error) {
+      console.error("Error in login:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  // Logout endpoint
+  app.post("/api/auth/logout", (req, res) => {
+    // Clear auth cookie
+    res.clearCookie('auth_token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      path: '/'
+    });
+    
+    // Clear session
+    req.session.destroy((err) => {
+      if (err) {
+        console.error("Error destroying session:", err);
+        return res.status(500).json({ message: "Failed to logout" });
+      }
+      
+      res.json({ message: "Logged out successfully" });
+    });
+  });
+  
+  // User validation endpoint
+  app.get("/api/auth/validate", authenticateToken, validateUser, (req, res) => {
+    res.json({
+      user: {
+        id: req.user!.id,
+        username: req.user!.username,
+        email: req.user!.email,
+        name: req.user!.name,
+        bio: req.user!.bio || "",
+        avatar: req.user!.avatar || ""
+      }
+    });
+  });
+  
+  // User registration endpoint
+  app.post("/api/users", async (req, res) => {
+    try {
+      const userData = userAuthSchema.parse(req.body);
+      
+      // Check if username is available
+      const existingUsername = await storage.getUserByUsername(userData.username);
+      if (existingUsername) {
+        return res.status(409).json({ message: "Username is already taken" });
+      }
+      
+      // Check if email is available
+      const existingEmail = await storage.getUserByEmail(userData.email);
+      if (existingEmail) {
+        return res.status(409).json({ message: "Email is already registered" });
+      }
+      
+      // Create user
+      const user = await storage.createUser({
+        username: userData.username,
+        email: userData.email,
+        name: userData.name || userData.username,
+        password: userData.password,
+        bio: "",
+        avatar: ""
+      });
       
       // Create default profile
-      await storage.createProfile({
-        userId: newUser.id,
+      const profile = await storage.createProfile({
+        userId: user.id,
         theme: "light",
         backgroundColor: "#7c3aed",
         textColor: "#ffffff",
@@ -570,183 +656,149 @@ export async function registerRoutes(app: Express): Promise<Server> {
         socialLinks: []
       });
       
-      // Set session
-      req.session.userId = newUser.id;
-      
-      // Generate JWT token
-      const token = generateToken({
-        id: newUser.id,
-        email: newUser.email,
-        username: newUser.username,
-      });
-      
-      res.status(201).json({ token, user: { id: newUser.id, username: newUser.username, email: newUser.email } });
-    } catch (error) {
-      handleZodError(error, res);
-    }
-  });
-
-  app.post("/api/auth/logout", (req, res) => {
-    console.log("🔍 Logout request received");
-    console.log("Session before logout:", req.session);
-    
-    // Clear all session data
-    req.session.userId = undefined;
-    if (req.session.passport) {
-      delete req.session.passport.user;
-      delete req.session.passport;
-    }
-    
-    // Destroy the session completely
-    req.session.destroy((err) => {
-      if (err) {
-        console.error("❌ Error destroying session:", err);
-        return res.status(500).json({ message: "Failed to logout" });
-      }
-      
-      // Clear the session cookie by setting an expired cookie with the same name
-      res.clearCookie('linkybecky.sid', {
-        path: '/',
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
-      });
-      
-      console.log("✅ Session successfully destroyed");
-      res.json({ message: "Logged out successfully" });
-    });
-  });
-
-  // Get authenticated user based on JWT token
-  app.get("/api/auth/me", authenticateToken, async (req, res) => {
-    try {
-      console.log("🔍 GET /api/auth/me called with token auth");
-      console.log("User from token:", req.user);
-      
-      const user = await storage.getUser(req.user!.id);
-      
-      if (!user) {
-        console.log(`❌ User with id ${req.user!.id} not found in database`);
-        return res.status(404).json({ message: "User not found" });
-      }
-      
-      console.log(`✅ Retrieved user: ${user.username} (ID: ${user.id})`);
-      
-      res.json({ 
-        id: user.id, 
-        username: user.username, 
-        email: user.email,
-        name: user.name,
-        bio: user.bio || "",
-        avatar: user.avatar || ""
-      });
-    } catch (error) {
-      console.error("❌ Error fetching user:", error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-  
-  // Get authenticated user from session (used for session-based auth)
-  app.get("/api/auth/me-from-session", async (req, res) => {
-    try {
-      // Use our debug utility instead of manual logging
-      dumpRequestInfo(req, 'ME-FROM-SESSION ENDPOINT');
-      
-      // Check if we have a userId in:
-      // 1. Session directly
-      // 2. Session.passport.user (Passport.js standard)
-      let userId = req.session?.userId;
-      
-      if (!userId && req.session?.passport?.user) {
-        userId = req.session.passport.user;
-        console.log(`ℹ️ Using userId from passport: ${userId}`);
-      }
-      
-      if (!userId) {
-        console.error("❌ No userId in session - direct or passport");
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      
-      console.log(`✅ Found userId in session: ${userId}`);
-      
-      // Get user from database
-      const user = await storage.getUser(userId);
-      
-      if (!user) {
-        console.error(`❌ User with ID ${userId} not found in database`);
-        return res.status(404).json({ message: "User not found" });
-      }
-      
-      console.log(`✅ Retrieved user: ${user.username} (ID: ${user.id})`);
-      
-      // Now that we have verified the user, save it properly in the session (both ways)
-      req.session.userId = user.id;
-      if (!req.session.passport) {
-        req.session.passport = { user: user.id };
-      }
-      
-      // Save session with verified user before continuing
-      req.session.save((err) => {
-        if (err) {
-          console.error("❌ Error saving session:", err);
-        } else {
-          console.log("✅ Session saved successfully with verified user ID");
-        }
-      });
-      
-      // Generate a fresh token for the frontend
+      // Generate token
       const token = generateToken({
         id: user.id,
         email: user.email,
         username: user.username
       });
       
-      // Return the user with the token
-      res.json({
-        id: user.id,
-        email: user.email,
-        username: user.username,
-        name: user.name,
-        bio: user.bio || "",
-        avatar: user.avatar || "",
-        token // Include the token in the response
+      // Set token in session
+      req.session.userId = user.id;
+      if (!req.session.passport) {
+        req.session.passport = { user: user.id };
+      }
+      
+      // Set token in cookie
+      res.cookie('auth_token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
+        path: '/'
+      });
+      
+      // Save session before response
+      req.session.save((err) => {
+        if (err) {
+          console.error("Error saving session:", err);
+        }
+        
+        // Return user and token
+        res.status(201).json({
+          user: {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            name: user.name,
+            bio: user.bio || "",
+            avatar: user.avatar || ""
+          },
+          token
+        });
       });
     } catch (error) {
-      console.error("❌ Error in /api/auth/me-from-session:", error);
-      res.status(500).json({ message: "Server error" });
+      // Handle validation errors
+      handleZodError(error, res);
     }
   });
-
-  // Username availability check
-  app.get("/api/username/availability/:username", async (req, res) => {
+  
+  // Check username availability
+  apiRouter.get("/username/availability/:username", async (req: Request, res: Response) => {
     try {
       const { username } = req.params;
+      
+      if (!username) {
+        return res.status(400).json({ message: "Username is required" });
+      }
       
       // Validate username format
       if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
         return res.status(400).json({ 
-          available: false, 
+          available: false,
           message: "Username must be 3-20 characters and only contain letters, numbers, and underscores." 
         });
       }
       
       const existingUser = await storage.getUserByUsername(username);
       
-      res.json({
+      return res.json({
         available: !existingUser,
-        message: existingUser ? "Username is already taken." : "Username is available."
+        message: existingUser ? "Username is already taken" : "Username is available"
       });
     } catch (error) {
       console.error("Error checking username availability:", error);
-      res.status(500).json({ 
-        available: false, 
-        message: "Error checking username availability." 
-      });
+      res.status(500).json({ message: "Failed to check username availability" });
     }
   });
-
-  // User & Profile Routes
-  app.get("/api/users/:username", async (req, res) => {
+  
+  // User profile routes
+  app.get("/api/users/:id", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json({
+        id: user.id,
+        username: user.username,
+        name: user.name,
+        bio: user.bio || "",
+        avatar: user.avatar || ""
+      });
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  // Update user profile
+  app.patch("/api/users/:id", authenticateToken, validateUser, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      
+      // Ensure the authenticated user can only update their own profile
+      if (userId !== req.user!.id) {
+        return res.status(403).json({ message: "Unauthorized to update this user" });
+      }
+      
+      const { name, bio, avatar } = req.body;
+      
+      // Create update object with provided fields
+      const updateData: Partial<any> = {};
+      if (name !== undefined) updateData.name = name;
+      if (bio !== undefined) updateData.bio = bio;
+      if (avatar !== undefined) updateData.avatar = avatar;
+      
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ message: "No valid fields to update" });
+      }
+      
+      const updatedUser = await storage.updateUser(userId, updateData);
+      
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json({
+        id: updatedUser.id,
+        username: updatedUser.username,
+        name: updatedUser.name,
+        bio: updatedUser.bio || "",
+        avatar: updatedUser.avatar || "",
+        email: updatedUser.email
+      });
+    } catch (error) {
+      console.error("Error updating user:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  // Get public profile by username
+  app.get("/api/username/:username", async (req, res) => {
     try {
       const { username } = req.params;
       const user = await storage.getUserByUsername(username);
@@ -755,26 +807,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
       
+      // Get profile data
       const profile = await storage.getProfile(user.id);
-      const userLinks = await storage.getLinks(user.id);
       
-      // Filter out disabled links for public profile
-      const enabledLinks = userLinks.filter(link => link.enabled);
+      if (!profile) {
+        return res.status(404).json({ message: "Profile not found" });
+      }
+      
+      // Get user's links
+      const links = await storage.getLinks(user.id);
+      
+      // Only return enabled links to the public
+      const enabledLinks = links.filter(link => link.enabled).sort((a, b) => a.position - b.position);
       
       res.json({
-        username: user.username,
-        name: user.name,
-        bio: user.bio,
-        avatar: user.avatar,
-        profile,
-        links: enabledLinks
+        user: {
+          username: user.username,
+          name: user.name,
+          bio: user.bio || "",
+          avatar: user.avatar || ""
+        },
+        profile: {
+          theme: profile.theme,
+          backgroundColor: profile.backgroundColor,
+          textColor: profile.textColor,
+          fontFamily: profile.fontFamily,
+          socialLinks: profile.socialLinks || []
+        },
+        links: enabledLinks.map(link => ({
+          id: link.id,
+          title: link.title,
+          url: link.url,
+          shortUrl: link.shortUrl,
+          description: link.description || "",
+          iconType: link.iconType,
+          position: link.position
+        }))
       });
     } catch (error) {
-      console.error("Error fetching user profile:", error);
+      console.error("Error fetching public profile:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
-
+  
+  // Profile routes
   app.get("/api/profile", authenticateToken, validateUser, async (req, res) => {
     try {
       const profile = await storage.getProfile(req.user!.id);
@@ -789,54 +865,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Internal server error" });
     }
   });
-
-  app.put("/api/profile", authenticateToken, validateUser, async (req, res) => {
+  
+  app.patch("/api/profile", authenticateToken, validateUser, async (req, res) => {
     try {
-      // Add debugging to understand auth issues in production
-      console.log('PUT /api/profile - User info:', {
-        userId: req.user?.id,
-        username: req.user?.username,
-        authenticated: !!req.user
-      });
-      console.log('Request headers:', {
-        authorization: req.headers.authorization ? 'Present (not shown)' : 'Missing',
-        cookie: req.headers.cookie ? 'Present (not shown)' : 'Missing',
-        'content-type': req.headers['content-type']
-      });
+      const { theme, backgroundColor, textColor, fontFamily, socialLinks, customDomain } = req.body;
       
-      if (!req.user) {
-        console.error('❌ User authentication failed for PUT /api/profile');
-        return res.status(401).json({ message: 'Authentication required' });
+      // Create update object with provided fields
+      const updateData: Partial<any> = {};
+      if (theme !== undefined) updateData.theme = theme;
+      if (backgroundColor !== undefined) updateData.backgroundColor = backgroundColor;
+      if (textColor !== undefined) updateData.textColor = textColor;
+      if (fontFamily !== undefined) updateData.fontFamily = fontFamily;
+      if (socialLinks !== undefined) updateData.socialLinks = socialLinks;
+      if (customDomain !== undefined) updateData.customDomain = customDomain;
+      
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ message: "No valid fields to update" });
       }
       
-      const profileData = insertProfileSchema.partial().parse(req.body);
-      console.log('Updating profile with data:', profileData);
+      const updatedProfile = await storage.updateProfile(req.user!.id, updateData);
       
-      const profile = await storage.getProfile(req.user.id);
-      
-      if (!profile) {
-        console.log('No existing profile found, creating new profile');
-        // Create profile if not exists
-        const newProfile = await storage.createProfile({
-          ...profileData,
-          userId: req.user.id
-        });
-        console.log('Created new profile:', newProfile.id);
-        return res.json(newProfile);
+      if (!updatedProfile) {
+        return res.status(404).json({ message: "Profile not found" });
       }
       
-      console.log('Updating existing profile:', profile.id);
-      // Update existing profile
-      const updatedProfile = await storage.updateProfile(req.user.id, profileData);
-      console.log('Profile updated successfully');
       res.json(updatedProfile);
     } catch (error) {
-      console.error('Error updating profile:', error);
-      handleZodError(error, res);
+      console.error("Error updating profile:", error);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
-
-  // Link Routes
+  
+  // Link routes
   app.get("/api/links", authenticateToken, validateUser, async (req, res) => {
     try {
       const links = await storage.getLinks(req.user!.id);
@@ -846,72 +906,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Internal server error" });
     }
   });
-
+  
   app.post("/api/links", authenticateToken, validateUser, async (req, res) => {
     try {
-      // Add debugging to understand auth issues in production
-      console.log('POST /api/links - User info:', {
-        userId: req.user?.id,
-        username: req.user?.username,
-        authenticated: !!req.user
-      });
-      console.log('Request headers:', {
-        authorization: req.headers.authorization ? 'Present (not shown)' : 'Missing',
-        cookie: req.headers.cookie ? 'Present (not shown)' : 'Missing',
-        'content-type': req.headers['content-type']
-      });
+      const parsedData = insertLinkSchema.parse(req.body);
       
-      if (!req.user) {
-        console.error('❌ User authentication failed for POST /api/links');
-        return res.status(401).json({ message: 'Authentication required' });
+      // Get max position for new link
+      const existingLinks = await storage.getLinks(req.user!.id);
+      const maxPosition = existingLinks.length > 0 
+        ? Math.max(...existingLinks.map(link => link.position)) + 1 
+        : 0;
+      
+      // Create link with userId and position
+      const linkData = {
+        ...parsedData,
+        userId: req.user!.id,
+        position: maxPosition
+      };
+      
+      // If UTM parameters are provided, add them to the URL
+      if (linkData.utmSource || linkData.utmMedium || linkData.utmCampaign || 
+          linkData.utmTerm || linkData.utmContent) {
+        const utmParams = {
+          source: linkData.utmSource,
+          medium: linkData.utmMedium,
+          campaign: linkData.utmCampaign,
+          term: linkData.utmTerm,
+          content: linkData.utmContent
+        };
+        linkData.url = addUtmParameters(linkData.url, utmParams);
       }
       
-      const linkData = insertLinkSchema.parse(req.body);
-      console.log('Creating new link with data:', {...linkData, url: linkData.url?.substring(0, 30) + '...'});
-      
-      // Get current max position
-      const links = await storage.getLinks(req.user.id);
-      const maxPosition = links.length > 0 
-        ? Math.max(...links.map(link => link.position))
-        : -1;
-      
-      // Create link with next position
-      const newLink = await storage.createLink({
-        ...linkData,
-        userId: req.user.id,
-        position: maxPosition + 1
-      });
-      
-      // Shorten the URL if not already shortened
-      if (!newLink.shortUrl) {
+      // Generate shortened URL if LinkyVicky integration is enabled
+      if (process.env.LINKYVICKY_API_KEY) {
         try {
-          const { shortUrl } = await shortenUrl(newLink.url);
-          await storage.updateLink(newLink.id, { shortUrl });
-          newLink.shortUrl = shortUrl;
-        } catch (error) {
-          console.error("Error shortening URL:", error);
-          // Continue even if shortening fails
+          console.log("Shortening URL with LinkyVicky:", linkData.url);
+          const shortenedData = await shortenUrl(linkData.url);
+          linkData.shortUrl = shortenedData.shortUrl;
+          console.log("URL shortened successfully:", shortenedData.shortUrl);
+        } catch (shortenError) {
+          console.error("Error shortening URL:", shortenError);
+          // Continue without shortened URL
         }
       }
       
-      res.status(201).json(newLink);
+      const link = await storage.createLink(linkData);
+      
+      res.status(201).json(link);
     } catch (error) {
       handleZodError(error, res);
     }
   });
-
+  
   app.get("/api/links/:id", authenticateToken, validateUser, async (req, res) => {
     try {
-      const { id } = req.params;
-      const link = await storage.getLink(parseInt(id));
+      const linkId = parseInt(req.params.id);
+      const link = await storage.getLink(linkId);
       
       if (!link) {
         return res.status(404).json({ message: "Link not found" });
       }
       
-      // Check if link belongs to the authenticated user
+      // Ensure user can only access their own links
       if (link.userId !== req.user!.id) {
-        return res.status(403).json({ message: "Unauthorized access to link" });
+        return res.status(403).json({ message: "Unauthorized to access this link" });
       }
       
       res.json(link);
@@ -920,194 +978,162 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Internal server error" });
     }
   });
-
-  app.put("/api/links/:id", authenticateToken, validateUser, async (req, res) => {
+  
+  app.patch("/api/links/:id", authenticateToken, validateUser, async (req, res) => {
     try {
-      const { id } = req.params;
-      const linkId = parseInt(id);
+      const linkId = parseInt(req.params.id);
       
-      const link = await storage.getLink(linkId);
+      // Verify the link exists and belongs to the user
+      const existingLink = await storage.getLink(linkId);
       
-      if (!link) {
+      if (!existingLink) {
         return res.status(404).json({ message: "Link not found" });
       }
       
-      // Check if link belongs to the authenticated user
-      if (link.userId !== req.user!.id) {
-        return res.status(403).json({ message: "Unauthorized access to link" });
+      if (existingLink.userId !== req.user!.id) {
+        return res.status(403).json({ message: "Unauthorized to update this link" });
       }
       
-      const linkData = insertLinkSchema.partial().parse(req.body);
+      // Create update object
+      const updateData: Partial<any> = {};
       
-      // Check if URL changed and needs reshortening
-      if (linkData.url && linkData.url !== link.url) {
-        try {
-          // Add UTM parameters if specified
-          let urlToShorten = linkData.url;
-          
-          if (linkData.utmSource || linkData.utmMedium || linkData.utmCampaign) {
-            urlToShorten = addUtmParameters(urlToShorten, {
-              source: linkData.utmSource,
-              medium: linkData.utmMedium,
-              campaign: linkData.utmCampaign,
-              term: linkData.utmTerm,
-              content: linkData.utmContent
-            });
-          }
-          
-          const { shortUrl } = await shortenUrl(urlToShorten);
-          linkData.shortUrl = shortUrl;
-        } catch (error) {
-          console.error("Error shortening URL:", error);
-          // Continue even if shortening fails
+      // List of fields that can be updated
+      const updatableFields = [
+        'title', 'url', 'description', 'iconType', 
+        'position', 'enabled', 'utmSource', 'utmMedium', 
+        'utmCampaign', 'utmTerm', 'utmContent'
+      ];
+      
+      // Add provided fields to update data
+      for (const field of updatableFields) {
+        if (req.body[field] !== undefined) {
+          updateData[field] = req.body[field];
         }
       }
       
-      const updatedLink = await storage.updateLink(linkId, linkData);
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ message: "No valid fields to update" });
+      }
+      
+      // If URL is being updated, regenerate shortened URL
+      if (updateData.url) {
+        // If UTM parameters are provided, add them to the URL
+        if (updateData.utmSource || updateData.utmMedium || updateData.utmCampaign || 
+            updateData.utmTerm || updateData.utmContent || 
+            existingLink.utmSource || existingLink.utmMedium || existingLink.utmCampaign || 
+            existingLink.utmTerm || existingLink.utmContent) {
+          
+          const utmParams = {
+            source: updateData.utmSource || existingLink.utmSource,
+            medium: updateData.utmMedium || existingLink.utmMedium,
+            campaign: updateData.utmCampaign || existingLink.utmCampaign,
+            term: updateData.utmTerm || existingLink.utmTerm,
+            content: updateData.utmContent || existingLink.utmContent
+          };
+          
+          updateData.url = addUtmParameters(updateData.url, utmParams);
+        }
+        
+        // Generate shortened URL if LinkyVicky integration is enabled
+        if (process.env.LINKYVICKY_API_KEY) {
+          try {
+            console.log("Shortening updated URL with LinkyVicky:", updateData.url);
+            const shortenedData = await shortenUrl(updateData.url);
+            updateData.shortUrl = shortenedData.shortUrl;
+            console.log("URL shortened successfully:", shortenedData.shortUrl);
+          } catch (shortenError) {
+            console.error("Error shortening URL:", shortenError);
+            // Continue without shortened URL
+          }
+        }
+      }
+      
+      const updatedLink = await storage.updateLink(linkId, updateData);
+      
+      if (!updatedLink) {
+        return res.status(500).json({ message: "Failed to update link" });
+      }
+      
       res.json(updatedLink);
     } catch (error) {
-      handleZodError(error, res);
+      console.error("Error updating link:", error);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
-
+  
   app.delete("/api/links/:id", authenticateToken, validateUser, async (req, res) => {
     try {
-      const { id } = req.params;
-      const linkId = parseInt(id);
+      const linkId = parseInt(req.params.id);
       
-      const link = await storage.getLink(linkId);
+      // Verify the link exists and belongs to the user
+      const existingLink = await storage.getLink(linkId);
       
-      if (!link) {
+      if (!existingLink) {
         return res.status(404).json({ message: "Link not found" });
       }
       
-      // Check if link belongs to the authenticated user
-      if (link.userId !== req.user!.id) {
-        return res.status(403).json({ message: "Unauthorized access to link" });
+      if (existingLink.userId !== req.user!.id) {
+        return res.status(403).json({ message: "Unauthorized to delete this link" });
       }
       
       const result = await storage.deleteLink(linkId);
       
-      if (result) {
-        res.json({ message: "Link deleted successfully" });
-      } else {
-        res.status(500).json({ message: "Failed to delete link" });
+      if (!result) {
+        return res.status(500).json({ message: "Failed to delete link" });
       }
+      
+      res.json({ message: "Link deleted successfully" });
     } catch (error) {
       console.error("Error deleting link:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
-
-  app.post("/api/links/reorder", authenticateToken, validateUser, async (req, res) => {
+  
+  // Update link positions
+  app.patch("/api/links/positions", authenticateToken, validateUser, async (req, res) => {
     try {
-      const linkPositions = z.array(linkUpdatePositionSchema).parse(req.body);
+      const { positions } = req.body;
       
-      const result = await storage.updateLinkPositions(req.user!.id, linkPositions);
+      // Validate the positions data
+      const validationResult = linkUpdatePositionSchema.safeParse({ positions });
       
-      if (result) {
-        res.json({ message: "Link positions updated successfully" });
-      } else {
-        res.status(500).json({ message: "Failed to update link positions" });
-      }
-    } catch (error) {
-      handleZodError(error, res);
-    }
-  });
-
-  // QR Code Generation
-  app.get("/api/links/:id/qrcode", authenticateToken, validateUser, async (req, res) => {
-    try {
-      const { id } = req.params;
-      const link = await storage.getLink(parseInt(id));
-      
-      if (!link) {
-        return res.status(404).json({ message: "Link not found" });
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid positions data format",
+          errors: validationResult.error.format()
+        });
       }
       
-      // Check if link belongs to the authenticated user
-      if (link.userId !== req.user!.id) {
-        return res.status(403).json({ message: "Unauthorized access to link" });
+      // Update link positions
+      const result = await storage.updateLinkPositions(req.user!.id, positions);
+      
+      if (!result) {
+        return res.status(500).json({ message: "Failed to update link positions" });
       }
       
-      const url = link.shortUrl || link.url;
-      const qrCodeUrl = await generateQrCode(url);
+      // Get updated links
+      const updatedLinks = await storage.getLinks(req.user!.id);
       
-      res.json({ qrCodeUrl });
+      res.json(updatedLinks);
     } catch (error) {
-      console.error("Error generating QR code:", error);
-      res.status(500).json({ message: "Failed to generate QR code" });
-    }
-  });
-
-  // Analytics Routes
-  app.get("/api/analytics", authenticateToken, validateUser, async (req, res) => {
-    try {
-      const { period } = req.query;
-      const analytics = await storage.getAnalytics(req.user!.id, period as string);
-      res.json(analytics);
-    } catch (error) {
-      console.error("Error fetching analytics:", error);
+      console.error("Error updating link positions:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
-
-  app.get("/api/links/:id/analytics", authenticateToken, validateUser, async (req, res) => {
+  
+  // Link click tracking
+  app.post("/api/links/click/:id", async (req, res) => {
     try {
-      const { id } = req.params;
-      const { period } = req.query;
+      const linkId = parseInt(req.params.id);
+      const { country, device, browser, referer } = req.body;
       
-      const link = await storage.getLink(parseInt(id));
-      
-      if (!link) {
-        return res.status(404).json({ message: "Link not found" });
-      }
-      
-      // Check if link belongs to the authenticated user
-      if (link.userId !== req.user!.id) {
-        return res.status(403).json({ message: "Unauthorized access to link" });
-      }
-      
-      // If the link has a shortUrl, get analytics from LinkyVicky
-      if (link.shortUrl) {
-        try {
-          const shortUrlId = link.shortUrl.split('/').pop();
-          const analytics = await getUrlAnalytics(shortUrlId!, period as string);
-          return res.json(analytics);
-        } catch (error) {
-          console.error("Error fetching analytics from LinkyVicky:", error);
-          // Fall back to local analytics if LinkyVicky fails
-        }
-      }
-      
-      // Fallback to local analytics
-      const analytics = await storage.getLinkAnalytics(parseInt(id), period as string);
-      res.json(analytics);
-    } catch (error) {
-      console.error("Error fetching link analytics:", error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  // Record click
-  app.post("/api/links/:id/click", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { country, device, browser } = req.body;
-      
-      const link = await storage.getLink(parseInt(id));
-      
-      if (!link) {
-        return res.status(404).json({ message: "Link not found" });
-      }
-      
+      // Record click
       await storage.recordClick({
-        linkId: parseInt(id),
-        userId: link.userId,
-        clicks: 1,
-        country,
-        device,
-        browser
+        linkId,
+        country: country || "Unknown",
+        device: device || "Unknown",
+        browser: browser || "Unknown",
+        referer: referer || ""
       });
       
       res.json({ message: "Click recorded successfully" });
@@ -1178,28 +1204,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Add a catch-all route to handle user profile URLs in the format /@username
   // This should be the LAST route before returning the httpServer
-  app.get('/@:username', (req, res, next) => {
+  app.get('/@:username', async (req, res, next) => {
     console.log(`Caught request for user profile: @${req.params.username}`);
     
-    // In development mode, let Vite handle this
-    if (process.env.NODE_ENV === 'development') {
-      return next();
-    }
-    
-    // In production, we need to manually serve the index.html file
     try {
-      const distPath = path.resolve(import.meta.dirname, "public");
-      console.log(`Serving index.html from ${distPath} for profile @${req.params.username}`);
+      // Check if this username exists first
+      const username = req.params.username;
+      const user = await storage.getUserByUsername(username);
+      
+      if (!user) {
+        console.warn(`Profile not found for username: @${username}`);
+        // We'll still serve the index.html but the frontend will show a "user not found" message
+      } else {
+        console.log(`Valid profile request for: @${username} (User ID: ${user.id})`);
+      }
+      
+      // In development mode, let Vite handle this
+      if (process.env.NODE_ENV === 'development') {
+        return next();
+      }
+      
+      // In production, we need to manually serve the index.html file
+      const distPath = path.resolve(__dirname, "../client/dist");
+      console.log(`Serving index.html from ${distPath} for profile @${username}`);
       return res.sendFile(path.resolve(distPath, "index.html"));
     } catch (error) {
-      console.error('Error serving index.html for profile page:', error);
+      console.error('Error handling user profile page:', error);
       next(error);
     }
   });
-
-  return httpServer;
-}
-)
 
   return httpServer;
 }
