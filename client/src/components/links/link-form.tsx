@@ -114,11 +114,19 @@ export function LinkDialog({ open, onOpenChange, link, mode }: LinkDialogProps) 
   }, [open, link, reset]);
 
   const onSubmit = async (data: LinkFormValues) => {
+    console.log(`Link form - Starting ${mode} operation`, data);
+    
     try {
       if (mode === "create") {
         // Create new link
+        console.log("Link form - Creating new link - Starting API request");
         const response = await apiRequest("POST", "/api/links", data);
+        
+        console.log("Link form - Create success - Processing response");
         const newLink = await response.json();
+        console.log("Link form - New link data:", newLink);
+        
+        // Update local state
         addLink(newLink);
         
         toast({
@@ -127,8 +135,14 @@ export function LinkDialog({ open, onOpenChange, link, mode }: LinkDialogProps) 
         });
       } else if (mode === "edit" && link) {
         // Update existing link
+        console.log(`Link form - Updating link ID ${link.id} - Starting API request`);
         const response = await apiRequest("PUT", `/api/links/${link.id}`, data);
+        
+        console.log("Link form - Update success - Processing response");
         const updatedLink = await response.json();
+        console.log("Link form - Updated link data:", updatedLink);
+        
+        // Update local state
         updateLink(link.id, updatedLink);
         
         toast({
@@ -138,12 +152,24 @@ export function LinkDialog({ open, onOpenChange, link, mode }: LinkDialogProps) 
       }
       
       // Close dialog and invalidate query cache
+      console.log("Link form - Operation successful - Closing dialog and invalidating cache");
       onOpenChange(false);
       queryClient.invalidateQueries({ queryKey: ['/api/links'] });
     } catch (error) {
+      console.error(`Link form - ${mode} operation failed:`, error);
+      
+      // Show appropriate error message
+      let errorMessage = `Failed to ${mode === "create" ? "create" : "update"} link. `;
+      
+      if (error instanceof Error) {
+        errorMessage += error.message;
+      } else {
+        errorMessage += "Please check your connection and try again.";
+      }
+      
       toast({
         title: "Error",
-        description: `Failed to ${mode === "create" ? "create" : "update"} link. Please try again.`,
+        description: errorMessage,
         variant: "destructive",
       });
     }

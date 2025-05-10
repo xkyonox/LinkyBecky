@@ -46,30 +46,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const apiRouter = express.Router();
   app.use('/api', apiRouter);
 
-  // Setup CORS
-  app.use(cors({
-    origin: function(origin, callback) {
-      if (!origin) return callback(null, true);
-      
-      const allowedOrigins = [
-        'https://linkybecky.replit.app', 
-        'https://linkybecky.com',
-        'http://localhost:3000',
-        'http://localhost:5173'
-      ];
-      
-      if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
-        callback(null, true);
-      } else {
-        console.warn(`⚠️ CORS blocked request from origin: ${origin}`);
-        callback(null, true); // Allow during debugging
-      }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With'],
-    exposedHeaders: ['Set-Cookie'],
-  }));
+  // We already have CORS configured in index.ts, so we don't need to configure it again here.
+  // Keeping this comment to document that CORS is intentionally configured only once.
   
   // Headers for cookies
   app.use((req, res, next) => {

@@ -32,18 +32,53 @@ export default function Profile({ username }: ProfileProps) {
         
         // Use the proper public profile endpoint that returns user, profile, and links data
         // This endpoint doesn't require authentication
-        const response = await fetch(`/api/username/${username}`);
+        console.log(`Fetching profile for username: ${username}`);
+        // Add cache-busting parameter
+        const timestamp = Date.now();
+        const response = await fetch(`/api/username/${username}?_t=${timestamp}`, {
+          credentials: 'include', // Include cookies
+          headers: {
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+          }
+        });
         
         if (!response.ok) {
-          if (response.status === 404) {
-            throw new Error("User not found");
+          console.error(`Error fetching profile: ${response.status} ${response.statusText}`);
+          
+          try {
+            // Try to get any additional error details from the response
+            const errorData = await response.json();
+            console.error("Server error details:", errorData);
+            
+            if (response.status === 404) {
+              throw new Error("User not found");
+            } else {
+              throw new Error(errorData.message || "Failed to fetch profile");
+            }
+          } catch (parseError) {
+            // If we can't parse the error JSON
+            if (response.status === 404) {
+              throw new Error("User not found");
+            } else {
+              throw new Error(`Failed to fetch profile: ${response.status} ${response.statusText}`);
+            }
           }
-          throw new Error("Failed to fetch profile");
         }
         
-        const data = await response.json();
-        console.log('Profile data fetched:', data);
-        setProfile(data);
+        try {
+          const data = await response.json();
+          console.log('Profile data fetched:', data);
+          
+          if (!data || !data.user) {
+            throw new Error("Invalid profile data received");
+          }
+          
+          setProfile(data);
+        } catch (parseError) {
+          console.error("Error parsing profile data:", parseError);
+          throw new Error("Failed to parse profile data");
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "An error occurred");
         console.error("Error fetching profile:", err);
