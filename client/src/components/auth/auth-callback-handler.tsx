@@ -9,49 +9,86 @@ export const AuthCallbackHandler = () => {
   const [, params] = useRoute("/auth/callback");
   
   useEffect(() => {
-    const processCallback = () => {
+    const processCallback = async () => {
       try {
-        // Get URL query parameters
+        // First check URL query parameters (in case we add URL params in the future)
         const searchParams = new URLSearchParams(window.location.search);
-        const token = searchParams.get("token");
-        const username = searchParams.get("username");
-        const error = searchParams.get("error");
+        const urlToken = searchParams.get("token");
+        const urlUsername = searchParams.get("username");
+        const urlError = searchParams.get("error");
         
-        if (error) {
+        if (urlError) {
           toast({
             title: "Authentication Failed",
-            description: error,
+            description: urlError,
             variant: "destructive"
           });
           setLocation("/");
           return;
         }
         
-        if (!token) {
+        if (urlToken) {
+          // If token is in URL, use it
+          console.log("Found token in URL parameters:", urlToken);
+          localStorage.setItem("auth_token", urlToken);
+          
+          if (urlUsername) {
+            localStorage.setItem("username", urlUsername);
+          }
+          
           toast({
-            title: "Authentication Failed",
-            description: "No authentication token received",
-            variant: "destructive"
+            title: "Authentication Successful",
+            description: "You have been successfully logged in",
+            variant: "default"
           });
-          setLocation("/");
+          
+          // Redirect to dashboard
+          setLocation("/dashboard");
           return;
         }
         
-        // Store token in localStorage
-        localStorage.setItem("auth_token", token);
-        
-        if (username) {
-          localStorage.setItem("username", username);
+        // If no token in URL, try to extract from the current page
+        // This handles the case where the token is in response body from the Google OAuth flow
+        try {
+          // Extract data from the current page body if it contains JSON
+          const bodyText = document.body.textContent || "";
+          if (bodyText.includes('"token"')) {
+            const jsonMatch = bodyText.match(/\{.*\}/);
+            if (jsonMatch) {
+              const responseData = JSON.parse(jsonMatch[0]);
+              console.log("Found auth data in page body:", responseData);
+              
+              if (responseData.token) {
+                // Store token in localStorage
+                localStorage.setItem("auth_token", responseData.token);
+                
+                if (responseData.user?.username) {
+                  localStorage.setItem("username", responseData.user.username);
+                }
+                
+                toast({
+                  title: "Authentication Successful",
+                  description: "You have been successfully logged in",
+                  variant: "default"
+                });
+                
+                // Redirect to dashboard
+                setLocation("/dashboard");
+                return;
+              }
+            }
+          }
+        } catch (jsonError) {
+          console.error("Error parsing JSON from body:", jsonError);
         }
         
+        // If we got here, no token was found
         toast({
-          title: "Authentication Successful",
-          description: "You have been successfully logged in",
-          variant: "default"
+          title: "Authentication Failed",
+          description: "No authentication token received",
+          variant: "destructive"
         });
-        
-        // Redirect to dashboard
-        setLocation("/dashboard");
+        setLocation("/");
       } catch (error) {
         console.error("Error processing authentication callback:", error);
         toast({

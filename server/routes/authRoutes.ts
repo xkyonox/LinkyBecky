@@ -21,6 +21,36 @@ declare module 'express-session' {
 
 const router = Router();
 
+// Redirect with token endpoint
+router.get('/callback-redirect', (req: Request, res: Response) => {
+  try {
+    const { token, username, error } = req.query;
+    
+    console.log('Redirecting with authentication token:', { token, username, error });
+    
+    // Create a URL with token in query params for the client to process
+    const clientCallbackUrl = new URL('/auth/callback', `${req.protocol}://${req.headers.host}`);
+    
+    if (error) {
+      clientCallbackUrl.searchParams.append('error', error as string);
+    }
+    
+    if (token) {
+      clientCallbackUrl.searchParams.append('token', token as string);
+    }
+    
+    if (username) {
+      clientCallbackUrl.searchParams.append('username', username as string);
+    }
+    
+    // Redirect to the client app with the token
+    return res.redirect(clientCallbackUrl.toString());
+  } catch (error) {
+    console.error('Error in /auth/callback-redirect:', error);
+    return res.redirect('/auth/callback?error=Server+error');
+  }
+});
+
 // Google OAuth client
 const googleClient = new OAuth2Client({
   clientId: process.env.GOOGLE_CLIENT_ID,
@@ -186,15 +216,18 @@ router.post('/google', async (req: Request, res: Response) => {
       username: user.username
     });
 
-    // Return user data and token
-    return res.json({
+    // Redirect to client with token
+    return res.redirect(`/api/auth/callback-redirect?token=${encodeURIComponent(authToken)}&username=${encodeURIComponent(user.username)}`);
+    
+    // Alternative JSON response for non-browser clients
+    /* return res.json({
       token: authToken,
       user: {
         id: user.id,
         username: user.username,
         email: user.email
       }
-    });
+    }); */
   } catch (error) {
     console.error('Error in /auth/google:', error);
     return res.status(500).json({ error: 'Server error' });
