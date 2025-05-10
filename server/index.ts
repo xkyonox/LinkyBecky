@@ -285,6 +285,37 @@ app.use((req, res, next) => {
           }
         }
         
+        // Auth endpoints
+        if (req.method === 'GET' && apiPath === '/auth/me-from-session') {
+          try {
+            // Check if user has a valid session
+            const userId = req.session?.userId || req.session?.passport?.user;
+            if (!userId) {
+              return res.json(null); // Not authenticated
+            }
+            
+            // Get user from database
+            try {
+              const userResult = await db.execute(sql`
+                SELECT id, username, email, name, bio, avatar 
+                FROM users WHERE id = ${userId}
+              `);
+              
+              if (userResult.rows && userResult.rows.length > 0) {
+                return res.json(userResult.rows[0]);
+              }
+              
+              return res.json(null); // User not found
+            } catch (dbErr) {
+              console.error("Database error fetching user:", dbErr);
+              return res.json(null);
+            }
+          } catch (error) {
+            console.error("Error in me-from-session:", error);
+            return res.json(null);
+          }
+        }
+        
         // If no handler matched, return a 404
         return res.status(404).json({ 
           error: 'API endpoint not found',
