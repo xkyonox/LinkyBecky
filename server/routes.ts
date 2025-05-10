@@ -5,6 +5,7 @@ import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { authenticateToken, validateUser, generateToken, authenticateSession } from "./middleware/auth";
 import { shortenUrl, generateQrCode, getUrlAnalytics, addUtmParameters } from "./utils/linkyVicky";
+import { getSystemHealth } from "./utils/health";
 import { generateLinkSuggestions, generatePerformanceInsights, generateLinkOrderRecommendations } from "./utils/openai";
 import { 
   insertUserSchema,
@@ -113,6 +114,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error in /auth/logout:", error);
       res.status(500).json({ success: false, message: "Internal server error during logout" });
+    }
+  });
+  
+  // Health check endpoint
+  apiRouter.get('/health', async (req: Request, res: Response) => {
+    try {
+      console.log("[express] Health check request received");
+      
+      // Get detailed system health
+      const health = await getSystemHealth();
+      
+      // Set appropriate status code based on health status
+      const statusCode = health.status === 'healthy' ? 200 : 
+                       health.status === 'degraded' ? 200 : 503;
+      
+      console.log(`[express] Health check completed with status: ${health.status}`);
+      res.status(statusCode).json(health);
+    } catch (error) {
+      console.error("[express] Error in health check:", error);
+      res.status(500).json({ 
+        status: 'error',
+        timestamp: new Date().toISOString(),
+        message: 'Error performing health check',
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   });
   

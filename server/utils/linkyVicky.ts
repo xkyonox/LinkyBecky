@@ -89,7 +89,7 @@ interface AnalyticsResponse {
 }
 
 /**
- * Shorten a URL using LinkyVicky API
+ * Shorten a URL using LinkyVicky API with retry capability
  */
 export async function shortenUrl(originalUrl: string, customSlug?: string): Promise<ShortenedUrlResponse> {
   console.log(`LinkyVicky - Attempting to shorten URL: ${originalUrl}${customSlug ? ' with custom slug' : ''}`);
@@ -99,36 +99,47 @@ export async function shortenUrl(originalUrl: string, customSlug?: string): Prom
     throw new Error('URL shortening service is not configured. Please contact support.');
   }
   
-  try {
-    console.log(`LinkyVicky - Making API request to ${LINKYVICKY_API_URL}/api/shorten`);
-    
-    const response = await axios.post(
-      `${LINKYVICKY_API_URL}/api/shorten`,
-      {
-        url: originalUrl,
-        customSlug
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${LINKYVICKY_API_KEY}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+  return retryWithBackoff(
+    async () => {
+      console.log(`LinkyVicky - Making API request to ${LINKYVICKY_API_URL}/api/shorten`);
+      
+      const response = await axios.post(
+        `${LINKYVICKY_API_URL}/api/shorten`,
+        {
+          url: originalUrl,
+          customSlug
         },
-        timeout: 10000 // 10 second timeout
+        {
+          headers: {
+            'Authorization': `Bearer ${LINKYVICKY_API_KEY}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          timeout: 10000 // 10 second timeout
+        }
+      );
+
+      console.log(`LinkyVicky - API responded with status ${response.status}`);
+      
+      if (response.status !== 200) {
+        console.error(`LinkyVicky - Error response: ${response.statusText}`);
+        throw new Error(`Failed to shorten URL: ${response.statusText}`);
       }
-    );
 
-    console.log(`LinkyVicky - API responded with status ${response.status}`);
-    
-    if (response.status !== 200) {
-      console.error(`LinkyVicky - Error response: ${response.statusText}`);
-      throw new Error(`Failed to shorten URL: ${response.statusText}`);
+      console.log('LinkyVicky - URL shortened successfully');
+      return response.data;
+    },
+    {
+      maxRetries: 3,
+      initialDelay: 300,
+      maxDelay: 3000,
+      factor: 2,
+      onRetry: (attempt, error, delay) => {
+        console.warn(`LinkyVicky - Retrying URL shortening (attempt ${attempt}). Error: ${error instanceof Error ? error.message : String(error)}. Retrying in ${delay}ms`);
+      }
     }
-
-    console.log('LinkyVicky - URL shortened successfully');
-    return response.data;
-  } catch (error: any) {
-    console.error('LinkyVicky - Error shortening URL:', error);
+  ).catch((error: any) => {
+    console.error('LinkyVicky - All retry attempts failed for URL shortening:', error);
     
     // Provide more detailed error information
     if (error.response) {
@@ -144,7 +155,7 @@ export async function shortenUrl(originalUrl: string, customSlug?: string): Prom
       console.error(`LinkyVicky - Request setup error: ${error.message}`);
       throw new Error(`URL shortening error: ${error.message}`);
     }
-  }
+  });
 }
 
 /**

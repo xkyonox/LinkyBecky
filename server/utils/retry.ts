@@ -12,7 +12,7 @@ export async function retryWithBackoff<T>(
     initialDelay?: number;
     maxDelay?: number;
     factor?: number;
-    onRetry?: (attempt: number, error: Error, delay: number) => void;
+    onRetry?: (attempt: number, error: unknown, delay: number) => void;
   } = {}
 ): Promise<T> {
   const {
@@ -34,7 +34,7 @@ export async function retryWithBackoff<T>(
       
       if (attempt >= maxRetries) {
         console.error(`Retry failed after ${attempt} attempts:`, error);
-        throw error;
+        throw error instanceof Error ? error : new Error(String(error));
       }
       
       // Calculate next delay with exponential backoff
