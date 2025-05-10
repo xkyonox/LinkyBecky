@@ -1,5 +1,4 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
-import { useAuthStore } from "./store";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -13,9 +12,22 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  // Get token from auth store
-  const state = useAuthStore.getState();
-  const token = state?.token;
+  // Get token from localStorage directly to avoid circular imports
+  let token = null;
+  const authStorageRaw = localStorage.getItem('auth-storage');
+  console.log('Raw auth-storage content:', authStorageRaw);
+  
+  try {
+    if (authStorageRaw) {
+      const authStorage = JSON.parse(authStorageRaw);
+      token = authStorage?.state?.token;
+      console.log('Parsed token from localStorage:', token ? 'Present (not shown for security)' : 'Missing');
+    } else {
+      console.log('No auth-storage found in localStorage');
+    }
+  } catch (e) {
+    console.error('Error parsing auth-storage from localStorage:', e);
+  }
   
   // Prepare headers
   const headers: Record<string, string> = {
@@ -57,9 +69,22 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    // Get token from auth store
-    const state = useAuthStore.getState();
-    const token = state?.token;
+    // Get token from localStorage directly to avoid circular imports
+    let token = null;
+    const authStorageRaw = localStorage.getItem('auth-storage');
+    console.log('Query - Raw auth-storage content:', authStorageRaw);
+    
+    try {
+      if (authStorageRaw) {
+        const authStorage = JSON.parse(authStorageRaw);
+        token = authStorage?.state?.token;
+        console.log('Query - Parsed token from localStorage:', token ? 'Present (not shown for security)' : 'Missing');
+      } else {
+        console.log('Query - No auth-storage found in localStorage');
+      }
+    } catch (e) {
+      console.error('Query - Error parsing auth-storage from localStorage:', e);
+    }
     
     // Add Authorization header if token exists
     const headers: Record<string, string> = {

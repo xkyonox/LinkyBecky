@@ -32,10 +32,16 @@ export function generateToken(user: { id: number; email: string; username: strin
 
 // Verify token middleware
 export function authenticateToken(req: Request, res: Response, next: NextFunction) {
+  console.log("Request headers:", req.headers);
+  console.log("Authorization Header:", req.headers['authorization']);
+  
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
+  console.log("Extracted token:", token ? "Present (not shown for security)" : "Missing");
+
   if (!token) {
+    console.log("Authentication failed: No token provided");
     return res.status(401).json({ message: 'Authentication required' });
   }
 
@@ -46,9 +52,11 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
       username: string;
     };
     
+    console.log("Token verified successfully for user ID:", decoded.id);
     req.user = decoded;
     next();
   } catch (error) {
+    console.error("Token verification failed:", error);
     return res.status(403).json({ message: 'Invalid or expired token' });
   }
 }
