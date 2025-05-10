@@ -10,7 +10,14 @@ export function AuthCallbackHandler() {
   const { setAuth } = useAuthStore();
 
   useEffect(() => {
+    // Keep track of whether we've already processed the callback
+    let isProcessingCallback = false;
+
     const handleCallback = async () => {
+      // Prevent multiple simultaneous executions
+      if (isProcessingCallback) return;
+      isProcessingCallback = true;
+
       try {
         // Get the username from sessionStorage
         const username = sessionStorage.getItem('pendingUsername');
@@ -45,8 +52,12 @@ export function AuthCallbackHandler() {
         // Clear the stored username
         sessionStorage.removeItem('pendingUsername');
         
-        // Redirect to dashboard
-        setLocation('/dashboard');
+        // Add a small delay before redirect to ensure state is updated
+        setTimeout(() => {
+          // Redirect to dashboard
+          setLocation('/dashboard');
+          isProcessingCallback = false;
+        }, 100);
       } catch (error) {
         console.error('Error in auth callback:', error);
         toast({
@@ -54,11 +65,21 @@ export function AuthCallbackHandler() {
           title: 'Authentication error',
           description: 'There was a problem completing your login. Please try again.',
         });
-        setLocation('/');
+        
+        // Add a small delay before redirect
+        setTimeout(() => {
+          setLocation('/');
+          isProcessingCallback = false;
+        }, 100);
       }
     };
 
     handleCallback();
+
+    // Cleanup function to prevent memory leaks
+    return () => {
+      isProcessingCallback = true; // Prevent any pending callbacks
+    };
   }, [setLocation, toast, setAuth]);
 
   return (
