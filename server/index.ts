@@ -101,7 +101,7 @@ app.use(session({
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
     path: '/',
-    domain: process.env.NODE_ENV === 'production' ? '.replit.app' : undefined
+    domain: process.env.NODE_ENV === 'production' ? 'linkybecky.replit.app' : undefined
   }
 }));
 
