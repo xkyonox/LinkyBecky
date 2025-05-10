@@ -720,6 +720,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Login endpoint
   app.post("/api/auth/login", async (req, res) => {
     try {
+      console.log("Login attempt with:", { email: req.body.email });
       const { email, password } = req.body;
       
       if (!email || !password) {
@@ -736,45 +737,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // In a real app, validate password here with bcrypt.compare
       // For now, we'll skip actual password validation
       
-      // Create token
+      // Create token - using simpleAuth for token generation
       const token = generateToken({
         id: user.id,
         email: user.email,
         username: user.username
       });
       
-      // Set token in session
-      req.session.userId = user.id;
-      if (!req.session.passport) {
-        req.session.passport = { user: user.id };
-      }
+      console.log(`✅ Login successful for user ID: ${user.id}`);
       
-      // Set token in cookie
-      res.cookie('auth_token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
-        path: '/'
-      });
-      
-      // Save session before sending response
-      req.session.save((err) => {
-        if (err) {
-          console.error("❌ Error saving session:", err);
-        }
-        
-        res.json({ 
-          token, 
-          user: { 
-            id: user.id, 
-            username: user.username, 
-            email: user.email,
-            name: user.name,
-            bio: user.bio || "",
-            avatar: user.avatar || ""
-          } 
-        });
+      // Return token directly in response - no cookies or sessions
+      res.json({ 
+        message: "Login successful",
+        token, 
+        user: { 
+          id: user.id, 
+          username: user.username, 
+          email: user.email,
+          name: user.name,
+          bio: user.bio || "",
+          avatar: user.avatar || ""
+        } 
       });
     } catch (error) {
       console.error("Error in login:", error);
@@ -782,37 +765,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Logout endpoint
+  // Logout endpoint - simplified for token-based auth
   app.post("/api/auth/logout", (req, res) => {
-    // Clear auth cookie
-    res.clearCookie('auth_token', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      path: '/'
-    });
-    
-    // Clear session
-    req.session.destroy((err) => {
-      if (err) {
-        console.error("Error destroying session:", err);
-        return res.status(500).json({ message: "Failed to logout" });
-      }
-      
-      res.json({ message: "Logged out successfully" });
-    });
+    // With token-based auth, logout is handled on the client side
+    // by removing the token from localStorage
+    res.json({ message: "Logged out successfully" });
   });
   
-  // User validation endpoint
-  app.get("/api/auth/validate", authenticateToken, validateUser, (req, res) => {
+  // User validation endpoint - using simpleAuth middleware
+  app.get("/api/auth/validate", authenticate, (req, res) => {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    
     res.json({
       user: {
-        id: req.user!.id,
-        username: req.user!.username,
-        email: req.user!.email,
-        name: req.user!.name,
-        bio: req.user!.bio || "",
-        avatar: req.user!.avatar || ""
+        id: req.user.id,
+        username: req.user.username,
+        email: req.user.email,
+        name: req.user.name || "",
+        bio: req.user.bio || "",
+        avatar: req.user.avatar || ""
       }
     });
   });
