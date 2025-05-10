@@ -112,8 +112,8 @@ export function useTokenAuth() {
   }, [queryClient]);
   
   // Get auth header for API requests
-  const getAuthHeader = useCallback(() => {
-    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  const getAuthHeader = useCallback((): Record<string, string> => {
+    return token ? { 'Authorization': `Bearer ${token}` } : { 'Authorization': '' };
   }, [token]);
   
   return {

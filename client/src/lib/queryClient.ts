@@ -12,41 +12,11 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  // Get token from localStorage directly to avoid circular imports
-  let token = null;
-  const authStorageRaw = localStorage.getItem('auth-storage');
+  // Get token directly from localStorage 
+  const token = localStorage.getItem('auth_token');
   console.log(`API Request to ${url} - Starting API request function`);
+  console.log(`API Request to ${url} - Token: ${token ? "Present" : "Missing"}`);
   
-  try {
-    if (authStorageRaw) {
-      // Parse the auth storage data
-      const authStorage = JSON.parse(authStorageRaw);
-      token = authStorage?.state?.token;
-      
-      // Check if token is in expected format (JWT)
-      if (token) {
-        // Check if it looks like a JWT (starts with eyJ and has two dots)
-        const isValidJwtFormat = 
-          typeof token === 'string' && 
-          token.startsWith('eyJ') && 
-          (token.match(/\./g) || []).length === 2;
-        
-        console.log(`API Request to ${url} - Token valid: ${isValidJwtFormat}`);
-        
-        if (!isValidJwtFormat) {
-          console.error('Token does not appear to be in valid JWT format!');
-          token = null; // Don't use invalid tokens
-        }
-      } else {
-        console.log(`API Request to ${url} - No token in auth storage`);
-      }
-    } else {
-      console.log(`API Request to ${url} - No auth storage found`);
-    }
-  } catch (e) {
-    console.error('Error parsing auth-storage from localStorage:', e);
-    token = null;
-  }
   
   // Prepare headers with common options
   const headers: Record<string, string> = {
@@ -112,39 +82,12 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    // Get token from localStorage directly to avoid circular imports
-    let token = null;
+    // Get token directly from localStorage
+    const token = localStorage.getItem('auth_token');
     const url = queryKey[0] as string;
-    const authStorageRaw = localStorage.getItem('auth-storage');
     console.log(`Query to ${url} - Starting query function`);
+    console.log(`Query to ${url} - Token: ${token ? "Present" : "Missing"}`);
     
-    try {
-      if (authStorageRaw) {
-        const authStorage = JSON.parse(authStorageRaw);
-        token = authStorage?.state?.token;
-        
-        // Check if token is in expected format (JWT)
-        if (token) {
-          // Check if it looks like a JWT (starts with eyJ and has two dots)
-          const isValidJwtFormat = 
-            typeof token === 'string' && 
-            token.startsWith('eyJ') && 
-            (token.match(/\./g) || []).length === 2;
-          
-          if (!isValidJwtFormat) {
-            console.error(`Query to ${url} - Token does not appear to be in valid JWT format!`);
-            token = null; // Don't use invalid tokens
-          }
-        } else {
-          console.log(`Query to ${url} - No token in auth storage state`);
-        }
-      } else {
-        console.log(`Query to ${url} - No auth-storage found in localStorage`);
-      }
-    } catch (e) {
-      console.error(`Query to ${url} - Error parsing auth-storage from localStorage:`, e);
-      token = null;
-    }
     
     // Add cache-busting for all API endpoints to prevent stale data
     const finalUrl = `${url}${url.includes('?') ? '&' : '?'}_t=${Date.now()}`;
