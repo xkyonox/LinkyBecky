@@ -1,0 +1,3 @@
+{
+  "prompt": "This project is LinkyBecky, a mobile-first Link-in-Bio tool that integrates with LinkyVicky (URL shortener + analytics). The app features AI-powered link suggestions, analytics dashboard, theme customization, and social media integration. Built with React.js + Tailwind + TypeScript frontend and Node.js + Express + PostgreSQL backend using Drizzle ORM."
+}
