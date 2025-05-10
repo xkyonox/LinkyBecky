@@ -124,7 +124,7 @@ export default function Home() {
           <div className="max-w-md mx-auto bg-white p-6 rounded-lg shadow-lg border border-border">
             <div className="space-y-4">
               <div className="space-y-2 text-center">
-                <h2 className="text-2xl font-bold">LinkyBecky: Where Your Story Begins</h2>
+                <h2 className="text-lg font-bold truncate">LinkyBecky: Where Your Story Begins</h2>
                 <p className="text-muted-foreground">
                   Pick a Name for Your Page
                 </p>

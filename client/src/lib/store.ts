@@ -7,6 +7,7 @@ interface User {
   username: string;
   email: string;
   name: string;
+  bio?: string;
   avatar?: string;
 }
 

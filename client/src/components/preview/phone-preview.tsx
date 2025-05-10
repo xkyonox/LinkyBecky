@@ -18,12 +18,17 @@ export function PhonePreview() {
   // Fetch profile if not already loaded
   const { data: profileData } = useQuery({
     queryKey: ['/api/profile'],
-    enabled: !profile
+    enabled: !profile && !!user?.id,
+    staleTime: 300000, // 5 minutes
+    refetchOnWindowFocus: false
   });
 
   useEffect(() => {
-    if (profileData && !profile) {
-      setProfile(profileData);
+    if (profileData && !profile && typeof profileData === 'object') {
+      // Make sure profileData matches the required Profile interface
+      if ('id' in profileData && 'userId' in profileData) {
+        setProfile(profileData as Profile);
+      }
     }
   }, [profileData, profile, setProfile]);
 
