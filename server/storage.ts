@@ -109,8 +109,36 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-    return user;
+    console.log(`🔍 DatabaseStorage.getUserByEmail called with email: "${email}"`);
+    try {
+      // Log the SQL query being executed
+      const query = db.select().from(users).where(eq(users.email, email));
+      console.log(`🔍 SQL Query: ${query.toSQL().sql}`);
+      
+      const [user] = await query;
+      
+      if (user) {
+        console.log(`✅ Found user with email "${email}": ID ${user.id}, username: ${user.username}`);
+      } else {
+        console.log(`ℹ️ No user found with email: "${email}"`);
+        // Try finding similar email (case insensitive comparison)
+        const allUsers = await db.select().from(users);
+        const similarUser = allUsers.find(u => 
+          u.email && u.email.toLowerCase() === email.toLowerCase()
+        );
+        
+        if (similarUser) {
+          console.log(`⚠️ Found similar email with different case: "${similarUser.email}"`);
+        } else {
+          console.log(`❌ No similar emails found in database`);
+        }
+      }
+      
+      return user;
+    } catch (error) {
+      console.error(`❌ Error in getUserByEmail("${email}"):`, error);
+      throw error;
+    }
   }
 
   async getUserByGoogleId(googleId: string): Promise<User | undefined> {

@@ -23,15 +23,15 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-export const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-};
+}
 
-export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   
   // Check for token in localStorage on mount
@@ -144,12 +144,49 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
   
-  const logout = () => {
-    localStorage.removeItem('auth_token');
-    setToken(null);
-    
-    // Clear all queries in cache
-    queryClient.clear();
+  const logout = async () => {
+    try {
+      console.log('Logging out user...');
+      
+      // First, try to call the server-side logout API (optional, may fail)
+      try {
+        const response = await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        });
+        
+        console.log('Server logout response:', response.status);
+      } catch (serverLogoutError) {
+        // If server logout fails, continue with client-side logout
+        console.warn('Server logout failed, continuing with client-side logout:', serverLogoutError);
+      }
+      
+      // Remove token from localStorage
+      localStorage.removeItem('auth_token');
+      
+      // Clear state
+      setToken(null);
+      
+      // Clear all queries in cache
+      queryClient.clear();
+      
+      // Hard redirect to home page to ensure clean state
+      window.location.href = '/';
+      
+      console.log('Logout completed');
+    } catch (error) {
+      console.error('Logout error:', error);
+      
+      // Even if there's an error, still clear local state
+      localStorage.removeItem('auth_token');
+      setToken(null);
+      queryClient.clear();
+    }
   };
   
   const getAuthHeader = (): Record<string, string> => {

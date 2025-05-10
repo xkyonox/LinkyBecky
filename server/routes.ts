@@ -797,43 +797,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { email, password } = req.body;
       
       if (!email || !password) {
+        console.log("❌ Missing email or password");
         return res.status(400).json({ message: "Email and password are required" });
       }
+      
+      console.log(`🔍 Looking up user with email: "${email}"`);
       
       // Find user by email
       const user = await storage.getUserByEmail(email);
       
       if (!user) {
+        console.log(`❌ No user found with email: "${email}"`);
         return res.status(401).json({ message: "Invalid email or password" });
       }
+      
+      console.log(`✅ Found user: ID=${user.id}, Username=${user.username}, Email=${user.email}`);
       
       // In a real app, validate password here with bcrypt.compare
       // For now, we'll skip actual password validation
       
       // Create token - using simpleAuth for token generation
-      const token = generateToken({
+      const userData = {
         id: user.id,
         email: user.email,
         username: user.username
-      });
+      };
+      console.log(`📝 Creating token with data:`, userData);
+      const token = generateToken(userData);
       
+      console.log(`🔑 Token generated successfully`);
       console.log(`✅ Login successful for user ID: ${user.id}`);
       
+      // Get user's profile for additional data
+      const profile = await storage.getProfile(user.id);
+      console.log(`👤 User profile found:`, profile ? `ID=${profile.id}` : "No profile found");
+      
       // Return token directly in response - no cookies or sessions
-      res.json({ 
+      const responseData = { 
         message: "Login successful",
         token, 
         user: { 
           id: user.id, 
           username: user.username, 
           email: user.email,
-          name: user.name,
+          name: user.name || "",
           bio: user.bio || "",
           avatar: user.avatar || ""
         } 
-      });
+      };
+      
+      console.log(`📤 Sending response data:`, JSON.stringify(responseData, null, 2));
+      
+      res.json(responseData);
     } catch (error) {
-      console.error("Error in login:", error);
+      console.error("❌ Error in login:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
