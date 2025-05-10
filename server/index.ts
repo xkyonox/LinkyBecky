@@ -3,6 +3,40 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import jwt from "jsonwebtoken";
+
+// JWT functions
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-change-in-production';
+
+function generateToken(user: { id: number; email: string; username: string }): string {
+  return jwt.sign(
+    { 
+      id: user.id,
+      email: user.email,
+      username: user.username
+    },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+}
+
+// Extract user from JWT token
+function getUserFromToken(req: Request): { id: number; email: string; username: string } | null {
+  try {
+    // Get token from Authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return null;
+    }
+    
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: number; email: string; username: string };
+    return decoded;
+  } catch (error) {
+    console.error('Error extracting user from token:', error);
+    return null;
+  }
+}
 
 const app = express();
 app.use(express.json());
@@ -316,6 +350,154 @@ app.use((req, res, next) => {
           }
         }
         
+        // Token endpoint - return a token for an authenticated user
+        if (req.method === 'GET' && apiPath === '/auth/token') {
+          try {
+            // Check if we have a userId in session
+            let userId = req.session?.userId;
+            
+            if (!userId && req.session?.passport?.user) {
+              userId = req.session.passport.user;
+            }
+            
+            if (!userId) {
+              return res.status(401).json({ 
+                error: 'Authentication required', 
+                message: 'No user ID in session' 
+              });
+            }
+            
+            // Get user from database
+            try {
+              const userResult = await db.execute(sql`
+                SELECT id, username, email, name, bio, avatar 
+                FROM users WHERE id = ${userId}
+              `);
+              
+              if (!userResult.rows || userResult.rows.length === 0) {
+                return res.status(404).json({ 
+                  error: 'User not found', 
+                  message: 'User not found in database' 
+                });
+              }
+              
+              const user = userResult.rows[0];
+              
+              // Generate JWT token
+              const token = generateToken({
+                id: Number(user.id),
+                email: user.email?.toString() || '',
+                username: user.username?.toString() || ''
+              });
+              
+              return res.json({
+                token,
+                user
+              });
+            } catch (dbErr) {
+              console.error("Database error fetching user for token:", dbErr);
+              return res.status(500).json({ 
+                error: 'Database error', 
+                message: 'Error fetching user from database' 
+              });
+            }
+          } catch (error) {
+            console.error("Error in token endpoint:", error);
+            return res.status(500).json({ 
+              error: 'Server error', 
+              message: 'Internal server error' 
+            });
+          }
+        }
+        
+        // Update username API
+        if (req.method === 'POST' && apiPath === '/auth/update-username') {
+          try {
+            // Get user from token
+            const tokenUser = getUserFromToken(req);
+            if (!tokenUser) {
+              return res.status(401).json({ 
+                error: 'Authentication required', 
+                message: 'Valid authentication token required' 
+              });
+            }
+            
+            // Get username from request body
+            const { username } = req.body;
+            
+            if (!username) {
+              return res.status(400).json({ 
+                error: 'Invalid request', 
+                message: 'Username is required' 
+              });
+            }
+            
+            // Validate username format
+            if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+              return res.status(400).json({ 
+                error: 'Invalid username', 
+                message: 'Username must be 3-20 characters and only contain letters, numbers, and underscores' 
+              });
+            }
+            
+            // Check if username is available
+            const usernameCheckResult = await db.execute(sql`
+              SELECT EXISTS (
+                SELECT 1 FROM users WHERE username = ${username} AND id != ${tokenUser.id}
+              ) as exists
+            `);
+            
+            const userExists = usernameCheckResult.rows?.[0]?.exists === true || 
+                               usernameCheckResult.rows?.[0]?.exists === 't' || 
+                               usernameCheckResult.rows?.[0]?.exists === 'true';
+            
+            if (userExists) {
+              return res.status(400).json({ 
+                error: 'Username taken', 
+                message: 'This username is already taken by another user' 
+              });
+            }
+            
+            // Update username
+            await db.execute(sql`
+              UPDATE users SET username = ${username} WHERE id = ${tokenUser.id}
+            `);
+            
+            // Get updated user
+            const userResult = await db.execute(sql`
+              SELECT id, username, email, name, bio, avatar 
+              FROM users WHERE id = ${tokenUser.id}
+            `);
+            
+            if (!userResult.rows || userResult.rows.length === 0) {
+              return res.status(500).json({ 
+                error: 'Database error', 
+                message: 'Failed to retrieve updated user' 
+              });
+            }
+            
+            const updatedUser = userResult.rows[0];
+            
+            // Generate new token with updated username
+            const token = generateToken({
+              id: Number(updatedUser.id),
+              email: updatedUser.email?.toString() || '',
+              username: updatedUser.username?.toString() || ''
+            });
+            
+            return res.json({
+              token,
+              user: updatedUser
+            });
+          } catch (error) {
+            console.error("Error updating username:", error);
+            return res.status(500).json({ 
+              error: 'Server error', 
+              message: 'Internal server error' 
+            });
+          }
+        }
+        
         // Public profile endpoint - get a user by username
         if (req.method === 'GET' && apiPath.startsWith('/users/')) {
           try {
@@ -399,6 +581,168 @@ app.use((req, res, next) => {
             return res.status(500).json({ 
               error: 'Server error', 
               message: 'Failed to fetch user profile'
+            });
+          }
+        }
+        
+        // Profile management endpoints
+        // GET profile for the authenticated user
+        if (req.method === 'GET' && apiPath === '/profile') {
+          try {
+            // Get authenticated user from token or session
+            const tokenUser = getUserFromToken(req);
+            const sessionUserId = req.session?.userId || req.session?.passport?.user;
+            
+            let userId: number | null = null;
+            
+            if (tokenUser) {
+              userId = tokenUser.id;
+            } else if (sessionUserId) {
+              userId = sessionUserId;
+            }
+            
+            if (!userId) {
+              return res.status(401).json({ 
+                error: 'Authentication required', 
+                message: 'Valid authentication required'
+              });
+            }
+            
+            // Get profile from database
+            const profileResult = await db.execute(sql`
+              SELECT id, theme, background_color AS "backgroundColor", text_color AS "textColor", 
+                     font_family AS "fontFamily", social_links AS "socialLinks"
+              FROM profiles
+              WHERE user_id = ${userId}
+            `);
+            
+            if (!profileResult.rows || profileResult.rows.length === 0) {
+              return res.status(404).json({ 
+                error: 'Profile not found', 
+                message: 'No profile found for this user'
+              });
+            }
+            
+            const profile = profileResult.rows[0];
+            
+            // Parse socialLinks JSON if it's a string
+            if (typeof profile.socialLinks === 'string') {
+              try {
+                profile.socialLinks = JSON.parse(profile.socialLinks);
+              } catch (e) {
+                console.error('Error parsing socialLinks JSON:', e);
+                profile.socialLinks = [];
+              }
+            } else if (!profile.socialLinks) {
+              profile.socialLinks = [];
+            }
+            
+            return res.json(profile);
+          } catch (error) {
+            console.error("Error fetching profile:", error);
+            return res.status(500).json({ 
+              error: 'Server error', 
+              message: 'Failed to fetch profile'
+            });
+          }
+        }
+        
+        // Create or update profile
+        if (req.method === 'PUT' && apiPath === '/profile') {
+          try {
+            // Get authenticated user from token or session
+            const tokenUser = getUserFromToken(req);
+            const sessionUserId = req.session?.userId || req.session?.passport?.user;
+            
+            let userId: number | null = null;
+            
+            if (tokenUser) {
+              userId = tokenUser.id;
+            } else if (sessionUserId) {
+              userId = sessionUserId;
+            }
+            
+            if (!userId) {
+              return res.status(401).json({ 
+                error: 'Authentication required', 
+                message: 'Valid authentication required'
+              });
+            }
+            
+            // Validate request body
+            const { theme, backgroundColor, textColor, fontFamily, socialLinks } = req.body;
+            
+            if (!theme || !backgroundColor || !textColor || !fontFamily) {
+              return res.status(400).json({ 
+                error: 'Invalid request', 
+                message: 'Missing required profile fields'
+              });
+            }
+            
+            // Convert socialLinks to JSON string if it's an array
+            const socialLinksJson = Array.isArray(socialLinks) 
+              ? JSON.stringify(socialLinks) 
+              : JSON.stringify([]);
+            
+            // Check if profile exists
+            const profileCheckResult = await db.execute(sql`
+              SELECT id FROM profiles WHERE user_id = ${userId}
+            `);
+            
+            if (profileCheckResult.rows && profileCheckResult.rows.length > 0) {
+              // Update existing profile
+              await db.execute(sql`
+                UPDATE profiles 
+                SET theme = ${theme}, 
+                    background_color = ${backgroundColor}, 
+                    text_color = ${textColor}, 
+                    font_family = ${fontFamily}, 
+                    social_links = ${socialLinksJson}
+                WHERE user_id = ${userId}
+              `);
+            } else {
+              // Create new profile
+              await db.execute(sql`
+                INSERT INTO profiles (user_id, theme, background_color, text_color, font_family, social_links)
+                VALUES (${userId}, ${theme}, ${backgroundColor}, ${textColor}, ${fontFamily}, ${socialLinksJson})
+              `);
+            }
+            
+            // Get updated profile
+            const updatedProfileResult = await db.execute(sql`
+              SELECT id, theme, background_color AS "backgroundColor", text_color AS "textColor", 
+                     font_family AS "fontFamily", social_links AS "socialLinks"
+              FROM profiles
+              WHERE user_id = ${userId}
+            `);
+            
+            if (!updatedProfileResult.rows || updatedProfileResult.rows.length === 0) {
+              return res.status(500).json({ 
+                error: 'Database error', 
+                message: 'Failed to retrieve updated profile'
+              });
+            }
+            
+            const profile = updatedProfileResult.rows[0];
+            
+            // Parse socialLinks JSON if it's a string
+            if (typeof profile.socialLinks === 'string') {
+              try {
+                profile.socialLinks = JSON.parse(profile.socialLinks);
+              } catch (e) {
+                console.error('Error parsing socialLinks JSON:', e);
+                profile.socialLinks = [];
+              }
+            } else if (!profile.socialLinks) {
+              profile.socialLinks = [];
+            }
+            
+            return res.json(profile);
+          } catch (error) {
+            console.error("Error updating profile:", error);
+            return res.status(500).json({ 
+              error: 'Server error', 
+              message: 'Failed to update profile'
             });
           }
         }
