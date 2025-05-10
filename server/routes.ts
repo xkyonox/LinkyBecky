@@ -564,6 +564,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
   
+  // Callback-redirect endpoint - this is the endpoint that receives the token from the OAuth callback
+  // and redirects to the frontend with the token in the URL
+  app.get("/api/auth/callback-redirect", (req, res) => {
+    dumpRequestInfo(req, 'CALLBACK REDIRECT ENDPOINT');
+    console.log('📣 Callback redirect endpoint called');
+    
+    // Extract token from query params
+    const token = req.query.token as string;
+    const username = req.query.username as string;
+    const state = req.query.state as string;
+    
+    console.log(`✅ Token received (length: ${token ? token.length : 0})`);
+    if (username) console.log(`✅ Username received: ${username}`);
+    if (state) console.log(`✅ State received: ${state}`);
+    
+    if (!token) {
+      console.error("❌ No token provided in callback-redirect");
+      return res.redirect("/auth/redirect?error=no_token");
+    }
+    
+    // Redirect to frontend auth-redirect page with token
+    // We use window.location instead of React Router to ensure a full page reload
+    // This forces the token to be read from the URL and stored in localStorage
+    const clientRedirectUrl = `/auth/redirect?token=${encodeURIComponent(token)}`;
+    
+    console.log(`✅ Redirecting to client: ${clientRedirectUrl}`);
+    res.redirect(clientRedirectUrl);
+  });
+  
   // Token endpoint
   app.get("/api/auth/token", async (req, res) => {
     try {
