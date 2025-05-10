@@ -30,7 +30,9 @@ export default function Profile({ username }: ProfileProps) {
         setIsLoading(true);
         setError(null);
         
-        const response = await fetch(`/api/users/${username}`);
+        // Use the proper public profile endpoint that returns user, profile, and links data
+        // This endpoint doesn't require authentication
+        const response = await fetch(`/api/username/${username}`);
         
         if (!response.ok) {
           if (response.status === 404) {
@@ -40,6 +42,7 @@ export default function Profile({ username }: ProfileProps) {
         }
         
         const data = await response.json();
+        console.log('Profile data fetched:', data);
         setProfile(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : "An error occurred");
@@ -244,8 +247,16 @@ export default function Profile({ username }: ProfileProps) {
               </button>
             ))
           ) : (
-            <div className="text-center py-8 px-4">
-              <p className="text-gray-500">No links available yet.</p>
+            <div className="text-center py-10 px-4">
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+                <div className="h-12 w-12 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                  <ExternalLink className="h-6 w-6 text-gray-400" />
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No links yet</h3>
+                <p className="text-gray-500 text-sm mb-4">
+                  {username} hasn't added any links to their profile yet.
+                </p>
+              </div>
             </div>
           )}
           

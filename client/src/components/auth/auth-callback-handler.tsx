@@ -254,11 +254,20 @@ export function AuthCallbackHandler() {
           }
         }
         
-        // ✅ 3. Add a successful redirect to dashboard with better logging
-        console.log('Auth callback completed successfully, redirecting to dashboard...');
+        // ✅ 3. Add a successful redirect to user profile page with better logging
+        console.log('Auth callback completed successfully, redirecting...');
         setTimeout(() => {
-          // Redirect to dashboard
-          setLocation('/dashboard');
+          // If we have a username, redirect to user profile page, otherwise go to dashboard
+          const username = localStorage.getItem('auth-storage') ? 
+            JSON.parse(localStorage.getItem('auth-storage') || '{}')?.state?.user?.username : null;
+          
+          if (username) {
+            console.log(`Redirecting to user profile page: /@${username}`);
+            setLocation(`/@${username}`);
+          } else {
+            console.log('No username found, redirecting to dashboard');
+            setLocation('/dashboard');
+          }
           
           // Only clear the pendingUsername AFTER successfully redirecting
           setTimeout(() => {
