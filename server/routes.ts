@@ -20,7 +20,7 @@ import { z, ZodError } from "zod";
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import authRoutes from "./routes/authRoutes";
+import { authRouter } from "./routes/authRoutes";
 import { fromZodError } from "zod-validation-error";
 import cors from "cors";
 import path from "path";
@@ -46,7 +46,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
   // Set up auth routes
-  app.use('/api/auth', authRoutes);
+  app.use('/api/auth', authRouter);
   
   // Create an API router
   const apiRouter = express.Router();

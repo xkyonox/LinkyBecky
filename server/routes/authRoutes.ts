@@ -1,225 +1,307 @@
-import express, { Request, Response } from 'express';
-import passport from 'passport';
-import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
+import express, { Request, Response, Router } from 'express';
+import { z } from 'zod';
+import { OAuth2Client } from 'google-auth-library';
 import { storage } from '../storage';
-import { generateToken } from '../middleware/simpleAuth';
+import { userAuthSchema } from '@shared/schema';
+import { generateToken, authenticate } from '../middleware/simpleAuth';
+import 'express-session';
 
-const authRouter = express.Router();
-
-// Initialize Google Strategy if credentials are available
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  passport.use(
-    new GoogleStrategy(
-      {
-        clientID: process.env.GOOGLE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: process.env.NODE_ENV === "production" 
-          ? "https://linkybecky.replit.app/api/auth/google/callback"
-          : "/api/auth/google/callback"
-      },
-      async (accessToken, refreshToken, profile, done) => {
-        try {
-          console.log('🔍 Google OAuth processing for profile:', {
-            id: profile.id,
-            email: profile.emails?.[0]?.value,
-            displayName: profile.displayName
-          });
-          
-          // Check if user exists by Google ID
-          let user = await storage.getUserByGoogleId(profile.id);
-          if (user) {
-            console.log('✅ Found existing user by Google ID:', user.id, user.username);
-            return done(null, user);
-          }
-          
-          // If not found by Google ID, check by email
-          const email = profile.emails?.[0]?.value || "";
-          if (!email) {
-            return done(new Error('Email is required'), undefined);
-          }
-          
-          user = await storage.getUserByEmail(email);
-          if (user) {
-            // Update existing user with Google ID
-            user = await storage.updateUser(user.id, { googleId: profile.id }) || user;
-            console.log('✅ Updated existing user with Google ID:', user.id, user.username);
-            return done(null, user);
-          }
-          
-          // Create new user if not found
-          const username = `user_${profile.id.substring(0, 8)}`;
-          
-          const newUser = await storage.createUser({
-            email,
-            googleId: profile.id,
-            username,
-            name: profile.displayName || username,
-            avatar: profile.photos?.[0]?.value || '',
-          });
-          
-          console.log('✅ Created new user:', newUser.id, newUser.username);
-          
-          // Create profile for the new user
-          await storage.createProfile({
-            userId: newUser.id,
-            theme: 'default',
-            backgroundColor: '#ffffff',
-            textColor: '#000000',
-            fontFamily: 'Inter',
-            socialLinks: []
-          });
-          
-          return done(null, newUser);
-        } catch (error) {
-          console.error('❌ Error in Google strategy:', error);
-          return done(error as Error, undefined);
-        }
-      }
-    )
-  );
+// Extend Express session type to include our Google data
+declare module 'express-session' {
+  interface SessionData {
+    pendingUsername?: string;
+    googleData?: {
+      googleId: string;
+      email: string;
+      name: string;
+      picture: string;
+    };
+  }
 }
 
-// Storage for pending usernames during OAuth flow
-const pendingUsernames = new Map<string, string>();
+const router = Router();
 
-// Start Google OAuth flow
-authRouter.get('/google', (req, res, next) => {
-  // Store username in session if provided in query param
-  const pendingUsername = req.query.username as string | undefined;
-  
-  // Store in memory for the callback using a random state value
-  if (pendingUsername) {
-    const state = Math.random().toString(36).substring(2, 15);
-    pendingUsernames.set(state, pendingUsername);
-    console.log('📝 Storing pendingUsername in memory:', pendingUsername, 'with state:', state);
-    
-    // Pass state to Google OAuth
-    passport.authenticate('google', {
-      scope: ['profile', 'email'],
-      state
-    })(req, res, next);
-  } else {
-    passport.authenticate('google', {
-      scope: ['profile', 'email']
-    })(req, res, next);
-  }
+// Google OAuth client
+const googleClient = new OAuth2Client({
+  clientId: process.env.GOOGLE_CLIENT_ID,
 });
 
-// Google OAuth callback
-authRouter.get('/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/?error=google_auth_failed' }),
-  (req: Request, res: Response) => {
-    try {
-      if (!req.user) {
-        console.error("❌ OAuth callback: User object is missing");
-        return res.redirect("/?error=authentication_failed");
-      }
-      
-      // Get user info
-      const user = req.user as any;
-      const userId = user.id;
-      
-      if (!userId) {
-        console.error("❌ OAuth callback: User ID is missing");
-        return res.redirect("/?error=user_id_missing");
-      }
-      
-      // Get state from the query params
-      const state = req.query.state as string | undefined;
-      let pendingUsername;
-      
-      // Get pending username from memory
-      if (state && pendingUsernames.has(state)) {
-        pendingUsername = pendingUsernames.get(state);
-        // Clean up
-        pendingUsernames.delete(state);
-        
-        // Update user with the pending username
-        storage.updateUser(userId, { username: pendingUsername })
-          .then(() => {
-            console.log(`✅ Updated user ${userId} with pendingUsername: ${pendingUsername}`);
-          })
-          .catch(err => {
-            console.error(`❌ Failed to update username for user ${userId}:`, err);
-          });
-      }
-      
-      // Generate JWT token
-      const token = generateToken({
-        id: userId,
-        email: user.email || '',
-        username: user.username || '',
-      });
-      
-      // Redirect to frontend with the token
-      console.log(`✅ Authentication successful for user ID: ${userId}`);
-      
-      // Redirect to callback with token
-      let redirectUrl = "/auth/callback";
-      
-      // Add token and username as query params
-      redirectUrl += `?token=${encodeURIComponent(token)}`;
-      if (pendingUsername) {
-        redirectUrl += `&username=${encodeURIComponent(pendingUsername)}`;
-      } else if (user.username) {
-        redirectUrl += `&username=${encodeURIComponent(user.username)}`;
-      }
-      
-      res.redirect(redirectUrl);
-    } catch (error) {
-      console.error("❌ Error in OAuth callback:", error);
-      res.redirect("/?error=callback_error");
+// Validate that required env vars are set
+const googleOAuthEnabled = !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET;
+
+// Schema for validating login credentials
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+});
+
+// Schema for validating Google sign-in token
+const googleSignInSchema = z.object({
+  token: z.string(),
+});
+
+// Schema for validating username availability
+const usernameSchema = z.object({
+  username: z.string().min(3).max(30).regex(/^[a-zA-Z0-9_]+$/),
+});
+
+// Get the currently authenticated user
+router.get('/me', authenticate, (req: Request, res: Response) => {
+  try {
+    // req.user is set by the authenticate middleware
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
     }
+
+    return res.json({
+      id: req.user.id,
+      email: req.user.email,
+      username: req.user.username
+    });
+  } catch (error) {
+    console.error('Error in /auth/me:', error);
+    return res.status(500).json({ error: 'Server error' });
   }
-);
-
-// Auth callback endpoint for browser to parse token
-authRouter.get('/callback', (req, res) => {
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Authentication Successful</title>
-        <script>
-          // Parse token from URL
-          const params = new URLSearchParams(window.location.search);
-          const token = params.get('token');
-          const username = params.get('username');
-          
-          if (token) {
-            // Store token in localStorage
-            localStorage.setItem('auth_token', token);
-            if (username) {
-              localStorage.setItem('username', username);
-            }
-            
-            // Redirect to dashboard or profile
-            const redirectTo = username ? '/dashboard' : '/';
-            window.location.href = redirectTo;
-          } else {
-            // Redirect to home if no token
-            window.location.href = '/?error=no_token';
-          }
-        </script>
-      </head>
-      <body>
-        <p>Authentication successful. Redirecting...</p>
-      </body>
-    </html>
-  `);
 });
 
-// Check auth status
-authRouter.get('/me', (req: Request, res: Response) => {
-  // This route will be protected by the auth middleware
-  return res.json(req.user);
+// Login endpoint - authenticates user with email and password
+router.post('/login', async (req: Request, res: Response) => {
+  try {
+    // Validate request body
+    const result = loginSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ 
+        error: 'Invalid credentials', 
+        details: result.error.errors 
+      });
+    }
+
+    const { email, password } = result.data;
+
+    // Find user by email
+    const user = await storage.getUserByEmail(email);
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Verify password (assuming a password field exists in the user model)
+    // In a real app, you'd use bcrypt.compare or similar
+    if (user.password !== password) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Generate JWT token
+    const token = generateToken({
+      id: user.id,
+      email: user.email,
+      username: user.username
+    });
+
+    // Return user data and token
+    return res.json({
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email
+      }
+    });
+  } catch (error) {
+    console.error('Error in /auth/login:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
 });
 
-// Logout endpoint
-authRouter.get('/logout', (req: Request, res: Response) => {
-  // Just return success since we're using token-based auth
-  res.json({ success: true, message: 'Logged out successfully' });
+// Google sign-in endpoint
+router.post('/google', async (req: Request, res: Response) => {
+  try {
+    if (!googleOAuthEnabled) {
+      return res.status(503).json({ error: 'Google OAuth is not configured' });
+    }
+
+    // Validate request body
+    const result = googleSignInSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ 
+        error: 'Invalid token', 
+        details: result.error.errors 
+      });
+    }
+
+    const { token } = result.data;
+
+    // Verify Google token
+    const ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email) {
+      return res.status(400).json({ error: 'Invalid Google token' });
+    }
+
+    const { email, name, picture } = payload;
+    const googleId = payload.sub;
+
+    // Find existing user by Google ID or email
+    let user = await storage.getUserByGoogleId(googleId);
+    
+    if (!user) {
+      // Check if user exists with this email
+      user = await storage.getUserByEmail(email!);
+      
+      if (user) {
+        // Update existing user with Google ID
+        user = await storage.updateUser(user.id, { googleId });
+      }
+    }
+
+    if (!user) {
+      // New user registration - need a username
+      // For now, generate a pending username based on email
+      // Store in session for later username selection step
+      let pendingUsername = email!.split('@')[0].replace(/[^a-zA-Z0-9]/g, '');
+      
+      // Store in session for username selection step
+      req.session.pendingUsername = pendingUsername;
+      req.session.googleData = {
+        googleId,
+        email: email!,
+        name: name || '',
+        picture: picture || ''
+      };
+      
+      // Redirect to username selection
+      return res.json({
+        needUsername: true,
+        suggestedUsername: pendingUsername
+      });
+    }
+
+    // Generate token for existing user
+    const authToken = generateToken({
+      id: user.id,
+      email: user.email,
+      username: user.username
+    });
+
+    // Return user data and token
+    return res.json({
+      token: authToken,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email
+      }
+    });
+  } catch (error) {
+    console.error('Error in /auth/google:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
 });
 
-export default authRouter;
+// Complete Google sign-in with chosen username
+router.post('/complete-google-signup', async (req: Request, res: Response) => {
+  try {
+    // Validate request body
+    const result = usernameSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ 
+        error: 'Invalid username', 
+        details: result.error.errors 
+      });
+    }
+
+    const { username } = result.data;
+
+    // Check if username is available
+    const existingUser = await storage.getUserByUsername(username);
+    if (existingUser) {
+      return res.status(400).json({ error: 'Username already taken' });
+    }
+
+    // Check if we have pending Google data in session
+    if (!req.session.googleData) {
+      return res.status(400).json({ error: 'No pending Google signup' });
+    }
+
+    const { googleId, email, name, picture } = req.session.googleData;
+
+    // Create new user
+    const user = await storage.createUser({
+      username,
+      email,
+      name,
+      googleId,
+      avatar: picture
+    });
+
+    // Create user profile
+    await storage.createProfile({
+      userId: user.id,
+      theme: 'default',
+      backgroundColor: '#ffffff', 
+      textColor: '#000000'
+    });
+
+    // Clear session data
+    delete req.session.googleData;
+    delete req.session.pendingUsername;
+
+    // Generate JWT token
+    const token = generateToken({
+      id: user.id,
+      email: user.email,
+      username: user.username
+    });
+
+    // Return user data and token
+    return res.json({
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email
+      }
+    });
+  } catch (error) {
+    console.error('Error in /auth/complete-google-signup:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Check username availability
+router.get('/username-available/:username', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    
+    // Validate username format
+    const result = usernameSchema.safeParse({ username });
+    if (!result.success) {
+      return res.status(400).json({ 
+        available: false,
+        error: 'Invalid username format'
+      });
+    }
+    
+    // Check if username exists
+    const existingUser = await storage.getUserByUsername(username);
+    
+    return res.json({
+      available: !existingUser
+    });
+  } catch (error) {
+    console.error('Error checking username availability:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Logout endpoint (client-side only for token-based auth)
+router.post('/logout', (req: Request, res: Response) => {
+  // For token-based auth, the client should discard the token
+  // This endpoint is just for API consistency
+  return res.json({ success: true });
+});
+
+export const authRouter = router;

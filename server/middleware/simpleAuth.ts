@@ -1,64 +1,61 @@
-import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
-import { storage } from "../storage";
+import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import { storage } from '../storage';
 
-// JWT secret key
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'development-jwt-secret';
 
-// Generate JWT token
+// Generate an authentication token for a user
 export function generateToken(user: { id: number; email: string; username: string }): string {
   return jwt.sign(
-    { 
-      userId: user.id,
-      email: user.email,
-      username: user.username
-    }, 
-    JWT_SECRET, 
+    { id: user.id, email: user.email, username: user.username },
+    JWT_SECRET,
     { expiresIn: '7d' }
   );
 }
 
-// Middleware to authenticate token
+// Middleware to authenticate and validate token from the Authorization header
 export async function authenticate(req: Request, res: Response, next: NextFunction) {
   try {
-    // Get token from header or query param (for simplicity)
+    // Get token from Authorization header
     const authHeader = req.headers.authorization;
-    let token = authHeader && authHeader.split(' ')[1];
     
-    // Also check for token in query parameter (for redirects and image requests)
-    if (!token && req.query.token) {
-      token = req.query.token as string;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No authentication token provided' });
     }
     
-    // If no token, return unauthorized
+    const token = authHeader.split(' ')[1];
+    
     if (!token) {
-      return res.status(401).json({ message: 'No token provided' });
+      return res.status(401).json({ error: 'Invalid token format' });
     }
     
     // Verify token
-    jwt.verify(token, JWT_SECRET, async (err: any, decoded: any) => {
-      if (err) {
-        console.error('Token verification failed:', err.message);
-        return res.status(401).json({ message: 'Invalid token' });
-      }
-      
-      // Get user from database for extra security
-      try {
-        const user = await storage.getUser(decoded.userId);
-        if (!user) {
-          return res.status(401).json({ message: 'User not found' });
-        }
-        
-        // Set user in request
-        req.user = user;
-        next();
-      } catch (dbError) {
-        console.error('Database error in auth middleware:', dbError);
-        return res.status(500).json({ message: 'Server error' });
-      }
-    });
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: number; email: string; username: string };
+    
+    // Get user from database
+    const user = await storage.getUser(decoded.id);
+    
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+    
+    // Attach user to request object
+    req.user = {
+      id: user.id,
+      email: user.email,
+      username: user.username
+    };
+    
+    next();
   } catch (error) {
-    console.error('Unexpected error in auth middleware:', error);
-    return res.status(500).json({ message: 'Server error' });
+    if (error instanceof jwt.JsonWebTokenError) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    if (error instanceof jwt.TokenExpiredError) {
+      return res.status(401).json({ error: 'Token expired' });
+    }
+    
+    console.error('Authentication error:', error);
+    return res.status(500).json({ error: 'Internal server error during authentication' });
   }
 }
