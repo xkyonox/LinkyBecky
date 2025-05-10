@@ -1,6 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { storage } from '../storage';
+import { SessionData } from 'express-session';
+
+// Extend SessionData to include userId property
+declare module 'express-session' {
+  interface SessionData {
+    userId?: number;
+  }
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || 'linky-becky-secret-key';
 
@@ -94,9 +102,12 @@ export async function validateUser(req: Request, res: Response, next: NextFuncti
 
 // Middleware for session-based authentication
 export function authenticateSession(req: Request, res: Response, next: NextFunction) {
+  // Check if session exists and if it has a userId property (properly typed with our SessionData extension)
   if (req.session && req.session.userId) {
+    console.log('Session authentication successful for user ID:', req.session.userId);
     next();
   } else {
+    console.log('Session authentication failed: No userId in session');
     res.status(401).json({ message: 'Authentication required' });
   }
 }
