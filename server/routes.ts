@@ -52,18 +52,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Endpoint to check auth status from session
   apiRouter.get('/auth/me-from-session', (req: Request, res: Response) => {
     try {
-      console.log("[express] Session auth check - Session:", req.session);
-      console.log("[express] Session auth check - User:", req.user);
+      console.log("[express] Session auth check - Session ID:", req.sessionID);
+      console.log("[express] Session auth check - Cookies:", req.headers.cookie);
       console.log("[express] Session auth check - Is Authenticated:", req.isAuthenticated());
+      console.log("[express] Session auth check - userId in session:", req.session?.userId);
+      console.log("[express] Session auth check - passport in session:", req.session?.passport);
+      console.log("[express] Session auth check - User object:", req.user);
+      console.log("[express] Session auth check - Session cookie settings:", req.session?.cookie);
       
-      if (req.isAuthenticated() && req.user) {
-        // User is logged in via session
+      // Check for userId in all possible locations
+      const userId = req.session?.userId || req.session?.passport?.user;
+      
+      if (userId || (req.isAuthenticated() && req.user)) {
+        // We have a user ID in the session or Passport says we're authenticated
+        console.log("[express] Session auth check - AUTHENTICATED with userId:", userId);
+        
+        // Get the user data - either from req.user (if populated by Passport) or userId
+        const userData = req.user || { id: userId };
+        
         res.json({ 
           isAuthenticated: true, 
-          user: req.user 
+          user: userData
         });
       } else {
         // No authenticated user found in session
+        console.log("[express] Session auth check - NOT AUTHENTICATED");
         res.json({ 
           isAuthenticated: false,
           user: null
@@ -171,8 +184,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Passport user serialization
   passport.serializeUser((user: any, done) => {
-    console.log('Serializing user to session:', user?.id || user);
-    done(null, user.id || user);
+    // Standardize what we store in the session - just the ID
+    console.log('Serializing user to session:', typeof user === 'object' ? user.id : user);
+    const userId = typeof user === 'object' ? user.id : user;
+    
+    // Log serialization happening
+    console.log(`✅ Serializing user ${userId} to session`);
+    
+    if (!userId) {
+      console.error('❌ Cannot serialize user without ID:', user);
+      return done(new Error('User ID is required for serialization'), null);
+    }
+    
+    // Store just the ID in the session
+    done(null, userId);
   });
   
   passport.deserializeUser(async (id: number, done) => {
@@ -183,8 +208,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('❌ User not found during deserialization:', id);
         return done(null, false);
       }
-      console.log('✅ User deserialized successfully:', user.username);
-      return done(null, user);
+      
+      // Convert the user DB model to a plain object compatible with req.user
+      const userObj = {
+        id: user.id,
+        email: user.email || '',
+        username: user.username,
+        name: user.name || '',
+        bio: user.bio || '',
+        avatar: user.avatar || '',
+      };
+      
+      console.log('✅ User deserialized successfully:', userObj.username);
+      return done(null, userObj);
     } catch (err) {
       console.error('❌ Error deserializing user:', err);
       return done(err, null);
@@ -393,15 +429,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // This will be handled by the frontend callback handler
         }
         
-        // Save user ID to session in both formats for redundancy
+        // Save user ID to session - this should happen automatically via req.login, 
+        // but we'll set it explicitly for redundancy
         req.session.userId = userId;
-        if (!req.session.passport) {
+        
+        // Double-check that passport session data is set correctly
+        if (!req.session.passport || !req.session.passport.user) {
+          console.log("⚠️ Manually setting passport user in session");
           req.session.passport = { user: userId };
         }
         
         // Save pendingUsername as well (as a backup)
         if (pendingUsername) {
           req.session.pendingUsername = pendingUsername;
+        }
+        
+        // Set the cookie properties for production
+        const isProd = process.env.NODE_ENV === 'production';
+        if (isProd) {
+          console.log("📝 Setting production cookie properties");
+          // Critical: Explicitly set the cookie settings for production
+          req.session.cookie.secure = true;
+          req.session.cookie.sameSite = 'none';
+          req.session.cookie.domain = 'linkybecky.replit.app';
         }
         
         // Generate JWT token and set as cookie for extra security
@@ -411,7 +461,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           username: (req.user as any).username || '',
         });
         
-        const isProd = process.env.NODE_ENV === 'production';
+        // Set the auth token cookie with the same settings
         res.cookie('auth_token', token, {
           httpOnly: true,
           secure: isProd,
@@ -422,6 +472,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         
         console.log('Modified session (before save):', JSON.stringify(req.session, null, 2));
+        console.log('Session cookie settings:', req.session.cookie);
         
         // Force session save before redirecting
         req.session.save((err) => {
