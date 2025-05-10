@@ -45,10 +45,11 @@ export function ProfileForm() {
     },
   });
 
-  // Update user mutation
+  // Update user mutation - fixed to use the correct endpoint /api/profile
   const updateUserMutation = useMutation({
     mutationFn: async (data: ProfileFormValues) => {
-      const response = await apiRequest("PUT", "/api/users/me", data);
+      console.log('Sending profile update to /api/profile', data);
+      const response = await apiRequest("PUT", "/api/profile", data);
       return response.json();
     },
     onSuccess: (updatedUser) => {

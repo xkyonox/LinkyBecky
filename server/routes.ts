@@ -35,10 +35,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Setup CORS - ensure it runs before session middleware
   app.use(cors({
-    // Allow any origin in development, specific domain in production
-    origin: process.env.NODE_ENV === "production" 
-      ? ["https://linkybecky.replit.app"] 
-      : true,
+    // Allow multiple origins (replit.app and custom domains)
+    origin: function(origin, callback) {
+      // For local development or testing without origin (like curl)
+      if (!origin) return callback(null, true);
+      
+      // Allow replit domains and your custom domain (if any)
+      const allowedOrigins = [
+        'https://linkybecky.replit.app', 
+        'https://linkybecky.com',
+        'http://localhost:3000',
+        'http://localhost:5173'
+      ];
+      
+      if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+        callback(null, true);
+      } else {
+        console.warn(`⚠️ CORS blocked request from origin: ${origin}`);
+        callback(null, true); // Still allow for now during debugging
+      }
+    },
     credentials: true, // Essential for cookies/auth to work cross-domain
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With'],
@@ -61,9 +77,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       rolling: true, // Force cookie to be set on every response
       name: 'linkybecky.sid', // Custom cookie name to avoid conflicts
       cookie: { 
-        secure: false, // Set to false even in production for now (troubleshooting)
+        // In Replit, we should use secure: true for HTTPS environments
+        secure: process.env.NODE_ENV === 'production', 
         httpOnly: true, // Prevent client-side JS from reading the cookie
-        sameSite: 'lax', // Changed from 'none' for better compatibility
+        // Important: 'none' is needed for cross-domain cookies but requires secure: true
+        // For Replit's environment, we need to use 'none' in production
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         path: '/', // Ensure cookie is available for all paths
         maxAge: 1000 * 60 * 60 * 24 * 7 // 1 week
       }
@@ -717,23 +736,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/profile", authenticateToken, validateUser, async (req, res) => {
     try {
-      const profileData = insertProfileSchema.partial().parse(req.body);
+      // Add debugging to understand auth issues in production
+      console.log('PUT /api/profile - User info:', {
+        userId: req.user?.id,
+        username: req.user?.username,
+        authenticated: !!req.user
+      });
+      console.log('Request headers:', {
+        authorization: req.headers.authorization ? 'Present (not shown)' : 'Missing',
+        cookie: req.headers.cookie ? 'Present (not shown)' : 'Missing',
+        'content-type': req.headers['content-type']
+      });
       
-      const profile = await storage.getProfile(req.user!.id);
+      if (!req.user) {
+        console.error('❌ User authentication failed for PUT /api/profile');
+        return res.status(401).json({ message: 'Authentication required' });
+      }
+      
+      const profileData = insertProfileSchema.partial().parse(req.body);
+      console.log('Updating profile with data:', profileData);
+      
+      const profile = await storage.getProfile(req.user.id);
       
       if (!profile) {
+        console.log('No existing profile found, creating new profile');
         // Create profile if not exists
         const newProfile = await storage.createProfile({
           ...profileData,
-          userId: req.user!.id
+          userId: req.user.id
         });
+        console.log('Created new profile:', newProfile.id);
         return res.json(newProfile);
       }
       
+      console.log('Updating existing profile:', profile.id);
       // Update existing profile
-      const updatedProfile = await storage.updateProfile(req.user!.id, profileData);
+      const updatedProfile = await storage.updateProfile(req.user.id, profileData);
+      console.log('Profile updated successfully');
       res.json(updatedProfile);
     } catch (error) {
+      console.error('Error updating profile:', error);
       handleZodError(error, res);
     }
   });
@@ -751,10 +793,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/links", authenticateToken, validateUser, async (req, res) => {
     try {
+      // Add debugging to understand auth issues in production
+      console.log('POST /api/links - User info:', {
+        userId: req.user?.id,
+        username: req.user?.username,
+        authenticated: !!req.user
+      });
+      console.log('Request headers:', {
+        authorization: req.headers.authorization ? 'Present (not shown)' : 'Missing',
+        cookie: req.headers.cookie ? 'Present (not shown)' : 'Missing',
+        'content-type': req.headers['content-type']
+      });
+      
+      if (!req.user) {
+        console.error('❌ User authentication failed for POST /api/links');
+        return res.status(401).json({ message: 'Authentication required' });
+      }
+      
       const linkData = insertLinkSchema.parse(req.body);
+      console.log('Creating new link with data:', {...linkData, url: linkData.url?.substring(0, 30) + '...'});
       
       // Get current max position
-      const links = await storage.getLinks(req.user!.id);
+      const links = await storage.getLinks(req.user.id);
       const maxPosition = links.length > 0 
         ? Math.max(...links.map(link => link.position))
         : -1;
@@ -762,7 +822,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create link with next position
       const newLink = await storage.createLink({
         ...linkData,
-        userId: req.user!.id,
+        userId: req.user.id,
         position: maxPosition + 1
       });
       
