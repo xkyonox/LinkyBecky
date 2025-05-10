@@ -47,7 +47,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     queryKey: ['/api/auth/me'],
     enabled: !!token,
     retry: false,
-    staleTime: 300000, // 5 minutes
+    staleTime: 300000, // 5 minutes,
+    queryFn: async () => {
+      // Explicitly pass the token in the authorization header
+      const response = await fetch('/api/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to fetch user data from /api/auth/me:', await response.text());
+        throw new Error('Failed to fetch user data');
+      }
+      
+      return response.json();
+    }
   });
   
   const login = async (email: string, password: string) => {

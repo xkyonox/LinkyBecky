@@ -107,6 +107,8 @@ export default function Login() {
   };
 
   const handleGoogleLogin = () => {
+    console.log("Redirecting to Google OAuth flow...");
+    // This is the endpoint handled by Passport in server/routes.ts
     window.location.href = "/api/auth/google";
   };
 
