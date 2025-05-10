@@ -15,13 +15,11 @@ export async function apiRequest(
   // Get token from localStorage directly to avoid circular imports
   let token = null;
   const authStorageRaw = localStorage.getItem('auth-storage');
-  console.log('Raw auth-storage content:', authStorageRaw);
+  console.log(`API Request to ${url} - Starting API request function`);
   
   try {
     if (authStorageRaw) {
-      // Log exact structure of localStorage['auth-storage']
-      console.log('auth-storage structure:', JSON.parse(authStorageRaw));
-      
+      // Parse the auth storage data
       const authStorage = JSON.parse(authStorageRaw);
       token = authStorage?.state?.token;
       
@@ -33,54 +31,79 @@ export async function apiRequest(
           token.startsWith('eyJ') && 
           (token.match(/\./g) || []).length === 2;
         
-        console.log('Token format valid:', isValidJwtFormat);
-        console.log('Token first 10 chars:', token.substring(0, 10) + '...');
+        console.log(`API Request to ${url} - Token valid: ${isValidJwtFormat}`);
         
         if (!isValidJwtFormat) {
           console.error('Token does not appear to be in valid JWT format!');
+          token = null; // Don't use invalid tokens
         }
       } else {
-        console.log('Token is missing from auth storage state');
+        console.log(`API Request to ${url} - No token in auth storage`);
       }
     } else {
-      console.log('No auth-storage found in localStorage');
+      console.log(`API Request to ${url} - No auth storage found`);
     }
   } catch (e) {
     console.error('Error parsing auth-storage from localStorage:', e);
+    token = null;
   }
   
-  // Prepare headers
+  // Prepare headers with common options
   const headers: Record<string, string> = {
+    // Always include these headers
+    "Accept": "application/json",
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+    
+    // Add content type for requests with body
     ...(data ? { "Content-Type": "application/json" } : {}),
+    
+    // Add Authorization header if we have a valid token
     ...(token ? { "Authorization": `Bearer ${token}` } : {})
   };
   
-  // Log for debugging
-  console.log(`API Request to ${url} with token: ${token ? "Present" : "Missing"}`);
+  console.log(`API Request to ${url} - Method: ${method}, Token: ${token ? "Present" : "Missing"}`);
   
-  // For debugging - check headers
-  console.log("Request headers:", headers);
-  
-  const res = await fetch(url, {
+  // Enhanced request configuration
+  const requestInit: RequestInit = {
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
-  });
+    credentials: "include", // Always include credentials for cookies
+    mode: "cors", // Explicitly set CORS mode
+    cache: "no-cache" // Prevent caching
+  };
+  
+  try {
+    console.log(`API Request to ${url} - Sending fetch request`);
+    const res = await fetch(url, requestInit);
+    
+    // Log all response headers for debugging
+    const allHeaders: Record<string, string> = {};
+    res.headers.forEach((value, key) => {
+      allHeaders[key] = value;
+    });
+    console.log(`API Response from ${url} - Status: ${res.status}, Headers:`, allHeaders);
 
-  if (!res.ok) {
-    console.error(`API Error ${res.status}: ${res.statusText} on ${url}`);
-    // Try to log response body for debugging
-    try {
-      const errorText = await res.clone().text();
-      console.error(`Error response: ${errorText}`);
-    } catch (e) {
-      console.error('Could not read error response');
+    if (!res.ok) {
+      console.error(`API Error ${res.status}: ${res.statusText} on ${url}`);
+      // Log response body for debugging
+      try {
+        const errorText = await res.clone().text();
+        console.error(`Error response body: ${errorText}`);
+      } catch (e) {
+        console.error('Could not read error response body:', e);
+      }
+    } else {
+      console.log(`API Request to ${url} - Success with status ${res.status}`);
     }
-  }
 
-  await throwIfResNotOk(res);
-  return res;
+    await throwIfResNotOk(res);
+    return res;
+  } catch (error) {
+    console.error(`API Request to ${url} - Network error:`, error);
+    throw error;
+  }
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
@@ -91,8 +114,9 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey }) => {
     // Get token from localStorage directly to avoid circular imports
     let token = null;
+    const url = queryKey[0] as string;
     const authStorageRaw = localStorage.getItem('auth-storage');
-    console.log('Query - Raw auth-storage content:', authStorageRaw);
+    console.log(`Query to ${url} - Starting query function`);
     
     try {
       if (authStorageRaw) {
@@ -108,66 +132,84 @@ export const getQueryFn: <T>(options: {
             (token.match(/\./g) || []).length === 2;
           
           if (!isValidJwtFormat) {
-            console.error('Query - Token does not appear to be in valid JWT format!');
+            console.error(`Query to ${url} - Token does not appear to be in valid JWT format!`);
             token = null; // Don't use invalid tokens
           }
         } else {
-          console.log('Query - Token is missing from auth storage state');
+          console.log(`Query to ${url} - No token in auth storage state`);
         }
       } else {
-        console.log('Query - No auth-storage found in localStorage');
+        console.log(`Query to ${url} - No auth-storage found in localStorage`);
       }
     } catch (e) {
-      console.error('Query - Error parsing auth-storage from localStorage:', e);
+      console.error(`Query to ${url} - Error parsing auth-storage from localStorage:`, e);
+      token = null;
     }
     
-    // Add cache-busting for auth endpoints to prevent stale data
-    const url = queryKey[0] as string;
-    const isCacheSensitiveEndpoint = 
-      url.includes('/api/auth/') || 
-      url.includes('/profile') || 
-      url.includes('/api/links');
-      
-    const finalUrl = isCacheSensitiveEndpoint 
-      ? `${url}${url.includes('?') ? '&' : '?'}_t=${Date.now()}` 
-      : url;
+    // Add cache-busting for all API endpoints to prevent stale data
+    const finalUrl = `${url}${url.includes('?') ? '&' : '?'}_t=${Date.now()}`;
     
-    // Add Authorization header if token exists
+    // Enhanced headers with comprehensive options
     const headers: Record<string, string> = {
+      "Accept": "application/json",
       "Cache-Control": "no-cache, no-store, must-revalidate",
       "Pragma": "no-cache",
       "Expires": "0",
       ...(token ? { "Authorization": `Bearer ${token}` } : {})
     };
     
-    console.log(`Query fetch to ${finalUrl} with token: ${token ? "Present" : "Missing"}`);
+    console.log(`Query to ${finalUrl} - Token: ${token ? "Present" : "Missing"}`);
     
-    // For debugging - check headers
-    console.log("Query headers:", headers);
-    
-    const res = await fetch(finalUrl, {
+    // Enhanced request configuration
+    const requestInit: RequestInit = {
       method: 'GET',
       headers,
       credentials: "include", // Always include credentials for session cookie
-    });
-
-    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      console.log("401 Unauthorized, returning null as configured");
-      return null;
-    }
+      mode: "cors", // Explicitly set CORS mode
+      cache: "no-cache" // Prevent caching
+    };
     
-    if (!res.ok) {
-      console.error(`Query Error ${res.status}: ${res.statusText} on ${queryKey[0]}`);
-      try {
-        const errorText = await res.clone().text();
-        console.error(`Error response: ${errorText}`);
-      } catch (e) {
-        console.error('Could not read error response');
+    try {
+      console.log(`Query to ${finalUrl} - Sending fetch request`);
+      const res = await fetch(finalUrl, requestInit);
+      
+      // Log response headers for debugging
+      const allHeaders: Record<string, string> = {};
+      res.headers.forEach((value, key) => {
+        allHeaders[key] = value;
+      });
+      
+      if (res.status === 401) {
+        console.log(`Query to ${finalUrl} - 401 Unauthorized received`);
+        
+        if (unauthorizedBehavior === "returnNull") {
+          console.log(`Query to ${finalUrl} - Returning null as configured for 401`);
+          return null;
+        }
       }
+      
+      if (!res.ok) {
+        console.error(`Query Error ${res.status}: ${res.statusText} on ${finalUrl}`);
+        
+        try {
+          const errorText = await res.clone().text();
+          console.error(`Error response body: ${errorText}`);
+        } catch (e) {
+          console.error('Could not read error response body:', e);
+        }
+      } else {
+        console.log(`Query to ${finalUrl} - Success with status ${res.status}`);
+      }
+      
+      await throwIfResNotOk(res);
+      
+      const data = await res.json();
+      console.log(`Query to ${finalUrl} - Data received successfully`);
+      return data;
+    } catch (error) {
+      console.error(`Query to ${finalUrl} - Error:`, error);
+      throw error;
     }
-
-    await throwIfResNotOk(res);
-    return await res.json();
   };
 
 export const queryClient = new QueryClient({
