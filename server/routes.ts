@@ -42,6 +42,14 @@ function dumpRequestInfo(req: Request, title: string = 'Request Info') {
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
+  // Set up Replit authentication
+  try {
+    await setupAuth(app);
+    console.log("✅ Replit Auth setup completed successfully");
+  } catch (error) {
+    console.error("❌ Error setting up Replit Auth:", error);
+  }
+  
   // Create an API router
   const apiRouter = express.Router();
   

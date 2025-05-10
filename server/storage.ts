@@ -17,6 +17,7 @@ export interface IStorage {
   getUserByGoogleId(googleId: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, data: Partial<InsertUser>): Promise<User | undefined>;
+  upsertUser(user: InsertUser): Promise<User>;
   
   // Profile operations
   getProfile(userId: number): Promise<Profile | undefined>;
@@ -47,6 +48,41 @@ export class DatabaseStorage implements IStorage {
   // User operations
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+  
+  // Handle Replit Auth upsert - create or update a user
+  async upsertUser(userData: InsertUser): Promise<User> {
+    console.log(`Upserting user with id ${userData.id} (${userData.username})`);
+    const [user] = await db
+      .insert(users)
+      .values({
+        ...userData,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          ...userData,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    
+    // Check if the user has a profile, create one if not
+    const existingProfile = await this.getProfile(user.id);
+    if (!existingProfile) {
+      await this.createProfile({
+        userId: user.id,
+        theme: 'default',
+        backgroundColor: '#ffffff',
+        textColor: '#000000',
+        fontFamily: 'Inter',
+        socialLinks: []
+      });
+    }
+    
     return user;
   }
 
