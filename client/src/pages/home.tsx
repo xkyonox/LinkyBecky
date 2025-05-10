@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { FaGoogle } from "react-icons/fa";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function Home() {
   const [username, setUsername] = useState("");
@@ -16,6 +16,7 @@ export default function Home() {
   }>({ type: null, message: "" });
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { isAuthenticated } = useAuth();
 
   // Store username in sessionStorage to retrieve after login
   useEffect(() => {
@@ -75,7 +76,7 @@ export default function Home() {
     }
   };
 
-  const handleGoogleLogin = async () => {
+  const handleClaimPage = async () => {
     const isAvailable = await checkUsernameAvailability();
     
     if (isAvailable) {
@@ -83,13 +84,31 @@ export default function Home() {
       sessionStorage.setItem("pendingUsername", username);
       console.log("Stored username in sessionStorage:", username);
       
-      // Redirect to Google OAuth with username as state param
-      window.location.href = `/api/auth/google?username=${encodeURIComponent(username)}`;
+      // Redirect to Google OAuth
+      window.location.href = "/api/auth/google";
     }
   };
 
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Header */}
+      <header className="border-b bg-white">
+        <div className="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">
+          <div className="flex items-center">
+            <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-violet-500 text-transparent bg-clip-text">
+              LinkyBecky
+            </h1>
+          </div>
+          <div>
+            {isAuthenticated ? (
+              <Button asChild variant="default">
+                <Link href="/dashboard">Dashboard</Link>
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </header>
+
       {/* Hero Section */}
       <main className="flex-grow flex flex-col items-center justify-center p-6 bg-gradient-to-b from-primary/10 to-background">
         <div className="max-w-3xl w-full mx-auto text-center space-y-8">
@@ -139,10 +158,10 @@ export default function Home() {
               <Button 
                 className="w-full"
                 disabled={isChecking || !username} 
-                onClick={handleGoogleLogin}
+                onClick={handleClaimPage}
+                size="lg"
               >
-                <FaGoogle className="mr-2" />
-                Claim with Google
+                Claim Your Page
               </Button>
             </div>
           </div>
