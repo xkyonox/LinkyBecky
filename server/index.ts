@@ -1029,7 +1029,7 @@ app.use((req, res, next) => {
             params.push(linkId);
             params.push(userId);
             
-            const updateResult = await db.query(updateSql, params);
+            const updateResult = await db.execute(sql.raw(updateSql, ...params));
             
             if (!updateResult.rows || updateResult.rows.length === 0) {
               return res.status(404).json({

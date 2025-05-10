@@ -38,7 +38,7 @@ export async function shortenUrl(originalUrl: string, customSlug?: string): Prom
       },
       {
         headers: {
-          'Authorization': `Bearer ${LINKYVICKY_API_TOKEN}`,
+          'Authorization': `Bearer ${LINKYVICKY_API_KEY}`,
           'Content-Type': 'application/json'
         }
       }
@@ -65,7 +65,7 @@ export async function generateQrCode(url: string): Promise<string> {
       { url },
       {
         headers: {
-          'Authorization': `Bearer ${LINKYVICKY_API_TOKEN}`,
+          'Authorization': `Bearer ${LINKYVICKY_API_KEY}`,
           'Content-Type': 'application/json'
         }
       }
@@ -92,7 +92,7 @@ export async function getUrlAnalytics(shortUrl: string, period?: string): Promis
       {
         params: { period },
         headers: {
-          'Authorization': `Bearer ${LINKYVICKY_API_TOKEN}`
+          'Authorization': `Bearer ${LINKYVICKY_API_KEY}`
         }
       }
     );
