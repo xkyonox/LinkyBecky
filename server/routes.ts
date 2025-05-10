@@ -15,10 +15,9 @@ import {
   linkUpdatePositionSchema
 } from "@shared/schema";
 import session from "express-session";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
-import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import cors from "cors";
 import path from "path";
@@ -979,14 +978,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   app.post("/api/links", authenticateToken, validateUser, async (req, res) => {
+    console.log("📑 Link creation request received", {
+      userId: req.user?.id,
+      userEmail: req.user?.email,
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip || req.socket.remoteAddress,
+      timestamp: new Date().toISOString()
+    });
+    
     try {
+      // Log request body (sanitized for security)
+      console.log("📥 Link creation request data:", {
+        title: req.body.title,
+        url: req.body.url,
+        iconType: req.body.iconType,
+        hasDescription: !!req.body.description,
+        hasUtmParams: !!(req.body.utmSource || req.body.utmMedium || req.body.utmCampaign),
+        timestamp: new Date().toISOString()
+      });
+      
+      // Validate request data
       const parsedData = insertLinkSchema.parse(req.body);
+      console.log("✅ Link validation successful");
       
       // Get max position for new link
       const existingLinks = await storage.getLinks(req.user!.id);
       const maxPosition = existingLinks.length > 0 
         ? Math.max(...existingLinks.map(link => link.position)) + 1 
         : 0;
+      
+      console.log(`📊 User has ${existingLinks.length} existing links, new position will be ${maxPosition}`);
       
       // Create link with userId and position
       const linkData = {
@@ -996,8 +1017,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       
       // If UTM parameters are provided, add them to the URL
+      let originalUrl = linkData.url;
       if (linkData.utmSource || linkData.utmMedium || linkData.utmCampaign || 
           linkData.utmTerm || linkData.utmContent) {
+        console.log("🔗 Adding UTM parameters to URL");
         const utmParams = {
           source: linkData.utmSource,
           medium: linkData.utmMedium,
@@ -1006,25 +1029,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
           content: linkData.utmContent
         };
         linkData.url = addUtmParameters(linkData.url, utmParams);
+        console.log(`🔗 URL with UTM params: Original URL: ${originalUrl} → Modified URL: ${linkData.url}`);
       }
       
       // Generate shortened URL if LinkyVicky integration is enabled
       if (process.env.LINKYVICKY_API_KEY) {
+        console.log("🔄 LinkyVicky API Key found, attempting to shorten URL");
         try {
-          console.log("Shortening URL with LinkyVicky:", linkData.url);
+          console.log(`🔍 Shortening URL with LinkyVicky: ${linkData.url}`);
+          const shortenStart = Date.now();
           const shortenedData = await shortenUrl(linkData.url);
+          const shortenDuration = Date.now() - shortenStart;
           linkData.shortUrl = shortenedData.shortUrl;
-          console.log("URL shortened successfully:", shortenedData.shortUrl);
+          console.log(`✅ URL shortened successfully in ${shortenDuration}ms:`, {
+            originalUrl: linkData.url,
+            shortUrl: shortenedData.shortUrl,
+            qrCodeAvailable: !!shortenedData.qrCodeUrl
+          });
         } catch (shortenError) {
-          console.error("Error shortening URL:", shortenError);
+          console.error("❌ Error shortening URL:", {
+            error: shortenError instanceof Error ? shortenError.message : String(shortenError),
+            url: linkData.url,
+            apiKeyConfigured: !!process.env.LINKYVICKY_API_KEY,
+            timestamp: new Date().toISOString()
+          });
           // Continue without shortened URL
         }
+      } else {
+        console.log("ℹ️ LinkyVicky API Key not configured, skipping URL shortening");
       }
       
+      console.log("💾 Saving link to database");
+      const dbSaveStart = Date.now();
       const link = await storage.createLink(linkData);
+      const dbSaveDuration = Date.now() - dbSaveStart;
+      console.log(`✅ Link saved successfully in ${dbSaveDuration}ms with ID: ${link.id}`);
       
       res.status(201).json(link);
-    } catch (error) {
+      console.log("📤 Link creation response sent:", {
+        linkId: link.id,
+        title: link.title,
+        hasShortUrl: !!link.shortUrl,
+        statusCode: 201,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: unknown) {
+      console.error("❌ Link creation failed:", {
+        error: error instanceof Error ? error.message : String(error),
+        type: error instanceof Error ? error.constructor.name : 'Unknown',
+        validationError: error instanceof ZodError,
+        timestamp: new Date().toISOString()
+      });
       handleZodError(error, res);
     }
   });
