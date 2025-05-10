@@ -832,6 +832,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const profile = await storage.getProfile(user.id);
       console.log(`👤 User profile found:`, profile ? `ID=${profile.id}` : "No profile found");
       
+      // Get user's links 
+      const links = await storage.getLinks(user.id);
+      console.log(`🔗 User has ${links.length} links`);
+      
       // Return token directly in response - no cookies or sessions
       const responseData = { 
         message: "Login successful",
@@ -843,10 +847,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           name: user.name || "",
           bio: user.bio || "",
           avatar: user.avatar || ""
-        } 
+        },
+        profile: profile || null,
+        links: links || [] 
       };
       
-      console.log(`📤 Sending response data:`, JSON.stringify(responseData, null, 2));
+      console.log(`📤 Sending response data with ${links.length} links`);
+      console.log(`📤 User data: ID=${user.id}, username=${user.username}`);
       
       res.json(responseData);
     } catch (error) {

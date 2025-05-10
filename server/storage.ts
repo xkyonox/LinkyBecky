@@ -111,30 +111,47 @@ export class DatabaseStorage implements IStorage {
   async getUserByEmail(email: string): Promise<User | undefined> {
     console.log(`🔍 DatabaseStorage.getUserByEmail called with email: "${email}"`);
     try {
-      // Log the SQL query being executed
-      const query = db.select().from(users).where(eq(users.email, email));
-      console.log(`🔍 SQL Query: ${query.toSQL().sql}`);
+      // First try exact case match
+      const exactQuery = db.select().from(users).where(eq(users.email, email));
+      console.log(`🔍 Exact SQL Query: ${exactQuery.toSQL().sql}`);
       
-      const [user] = await query;
+      const [exactUser] = await exactQuery;
       
-      if (user) {
-        console.log(`✅ Found user with email "${email}": ID ${user.id}, username: ${user.username}`);
-      } else {
-        console.log(`ℹ️ No user found with email: "${email}"`);
-        // Try finding similar email (case insensitive comparison)
-        const allUsers = await db.select().from(users);
-        const similarUser = allUsers.find(u => 
-          u.email && u.email.toLowerCase() === email.toLowerCase()
-        );
+      if (exactUser) {
+        console.log(`✅ Found user with exact email match "${email}": ID ${exactUser.id}, username: ${exactUser.username}`);
+        return exactUser;
+      }
+      
+      console.log(`ℹ️ No exact email match found, trying case-insensitive lookup`);
+      
+      // If exact match fails, try case-insensitive match
+      const allUsers = await db.select().from(users);
+      const caseInsensitiveUser = allUsers.find(u => 
+        u.email && u.email.toLowerCase() === email.toLowerCase()
+      );
+      
+      if (caseInsensitiveUser) {
+        console.log(`✅ Found user with case-insensitive email match: "${caseInsensitiveUser.email}"`);
+        console.log(`✅ User details: ID ${caseInsensitiveUser.id}, username: ${caseInsensitiveUser.username}`);
         
-        if (similarUser) {
-          console.log(`⚠️ Found similar email with different case: "${similarUser.email}"`);
+        // Update the user's email to the provided one for future lookups
+        console.log(`⚙️ Updating user email from "${caseInsensitiveUser.email}" to "${email}"`);
+        
+        const updatedUser = await this.updateUser(caseInsensitiveUser.id, {
+          email: email, // Update to the email that was used for login
+        });
+        
+        if (updatedUser) {
+          console.log(`✅ User email updated successfully`);
+          return updatedUser;
         } else {
-          console.log(`❌ No similar emails found in database`);
+          console.log(`⚠️ Failed to update user email, returning original user`);
+          return caseInsensitiveUser;
         }
       }
       
-      return user;
+      console.log(`❌ No matching user found for email: "${email}" (case-insensitive)`);
+      return undefined;
     } catch (error) {
       console.error(`❌ Error in getUserByEmail("${email}"):`, error);
       throw error;
