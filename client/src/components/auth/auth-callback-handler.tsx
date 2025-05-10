@@ -10,12 +10,19 @@ export const AuthCallbackHandler = () => {
   
   useEffect(() => {
     const processCallback = async () => {
+      console.log("Auth callback handler triggered");
+      console.log("Current URL:", window.location.href);
+      console.log("URL pathname:", window.location.pathname);
+      console.log("URL search params:", window.location.search);
+      
       try {
         // First check URL query parameters (in case we add URL params in the future)
         const searchParams = new URLSearchParams(window.location.search);
         const urlToken = searchParams.get("token");
         const urlUsername = searchParams.get("username");
         const urlError = searchParams.get("error");
+        
+        console.log("URL params:", { urlToken: urlToken ? "FOUND" : "NOT FOUND", urlUsername, urlError });
         
         if (urlError) {
           toast({

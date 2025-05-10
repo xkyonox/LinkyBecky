@@ -26,22 +26,39 @@ router.get('/callback-redirect', (req: Request, res: Response) => {
   try {
     const { token, username, error } = req.query;
     
-    console.log('Redirecting with authentication token:', { token, username, error });
+    console.log('=====================================================');
+    console.log('CALLBACK-REDIRECT ENDPOINT CALLED');
+    console.log('Protocol:', req.protocol);
+    console.log('Headers host:', req.headers.host);
+    console.log('Full URL:', req.originalUrl);
+    console.log('Redirecting with authentication data:', { 
+      hasToken: !!token, 
+      tokenLength: token ? (token as string).length : 0,
+      username, 
+      error 
+    });
     
     // Create a URL with token in query params for the client to process
     const clientCallbackUrl = new URL('/auth/callback', `${req.protocol}://${req.headers.host}`);
+    console.log('Base client callback URL:', clientCallbackUrl.toString());
     
     if (error) {
       clientCallbackUrl.searchParams.append('error', error as string);
+      console.log('Added error param:', error);
     }
     
     if (token) {
       clientCallbackUrl.searchParams.append('token', token as string);
+      console.log('Added token param (length):', (token as string).length);
     }
     
     if (username) {
       clientCallbackUrl.searchParams.append('username', username as string);
+      console.log('Added username param:', username);
     }
+    
+    console.log('Final redirect URL:', clientCallbackUrl.toString());
+    console.log('=====================================================');
     
     // Redirect to the client app with the token
     return res.redirect(clientCallbackUrl.toString());
@@ -179,14 +196,23 @@ router.post('/login', async (req: Request, res: Response) => {
 
 // Google sign-in endpoint
 router.post('/google', async (req: Request, res: Response) => {
+  console.log("====== /auth/google ENDPOINT CALLED ======");
+  console.log("Request headers:", req.headers);
+  console.log("Request body:", req.body);
+  console.log("Google OAuth enabled:", googleOAuthEnabled);
+  console.log("Google Client ID available:", !!process.env.GOOGLE_CLIENT_ID);
+  
   try {
     if (!googleOAuthEnabled) {
+      console.log("Google OAuth not configured, returning 503");
       return res.status(503).json({ error: 'Google OAuth is not configured' });
     }
 
     // Validate request body
+    console.log("Validating request body...");
     const result = googleSignInSchema.safeParse(req.body);
     if (!result.success) {
+      console.log("Invalid request body:", result.error.errors);
       return res.status(400).json({ 
         error: 'Invalid token', 
         details: result.error.errors 
@@ -194,6 +220,7 @@ router.post('/google', async (req: Request, res: Response) => {
     }
 
     const { token } = result.data;
+    console.log("Token received, verifying with Google...");
 
     // Verify Google token
     const ticket = await googleClient.verifyIdToken({
@@ -202,31 +229,40 @@ router.post('/google', async (req: Request, res: Response) => {
     });
 
     const payload = ticket.getPayload();
+    console.log("Token payload received:", payload ? "YES" : "NO");
     if (!payload || !payload.email) {
+      console.log("Invalid or missing payload from Google token");
       return res.status(400).json({ error: 'Invalid Google token' });
     }
-
+    
+    console.log("Token verified successfully with payload");
     const { email, name, picture } = payload;
     const googleId = payload.sub;
+    console.log("User info from Google:", { email, name: name || "N/A", googleId, hasPicture: !!picture });
 
     // Find existing user by Google ID or email
+    console.log("Looking for existing user by Google ID:", googleId);
     let user = await storage.getUserByGoogleId(googleId);
     
     if (!user) {
+      console.log("User not found by Google ID, checking by email:", email);
       // Check if user exists with this email
       user = await storage.getUserByEmail(email!);
       
       if (user) {
+        console.log("User found by email, updating with Google ID");
         // Update existing user with Google ID
         user = await storage.updateUser(user.id, { googleId });
       }
     }
 
     if (!user) {
+      console.log("New user, needs to create username");
       // New user registration - need a username
       // For now, generate a pending username based on email
       // Store in session for later username selection step
       let pendingUsername = email!.split('@')[0].replace(/[^a-zA-Z0-9]/g, '');
+      console.log("Generated pending username:", pendingUsername);
       
       // Store in session for username selection step
       req.session.pendingUsername = pendingUsername;
@@ -237,6 +273,9 @@ router.post('/google', async (req: Request, res: Response) => {
         picture: picture || ''
       };
       
+      console.log("Stored in session:", req.session.googleData);
+      console.log("Redirecting to username selection");
+      
       // Redirect to username selection
       return res.json({
         needUsername: true,
@@ -244,6 +283,7 @@ router.post('/google', async (req: Request, res: Response) => {
       });
     }
 
+    console.log("Existing user found, generating token");
     // Generate token for existing user
     const authToken = generateToken({
       id: user.id,
@@ -251,6 +291,9 @@ router.post('/google', async (req: Request, res: Response) => {
       username: user.username
     });
 
+    console.log("Token generated, redirecting to callback handler");
+    console.log("Redirect URL:", `/api/auth/callback-redirect?token=${encodeURIComponent(authToken)}&username=${encodeURIComponent(user.username)}`);
+    
     // Redirect to client with token
     return res.redirect(`/api/auth/callback-redirect?token=${encodeURIComponent(authToken)}&username=${encodeURIComponent(user.username)}`);
     
