@@ -3,11 +3,14 @@ import jwt from 'jsonwebtoken';
 import { storage } from '../storage';
 import { SessionData } from 'express-session';
 
-// Extend SessionData to include userId and pendingUsername properties
+// Extend SessionData to include userId, pendingUsername, and passport properties
 declare module 'express-session' {
   interface SessionData {
     userId?: number;
     pendingUsername?: string;
+    passport?: {
+      user: number;
+    };
   }
 }
 
@@ -47,16 +50,30 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
   console.log("Session:", req.session);
   console.log("Session ID:", req.sessionID);
   
-  // First, check if we have a session with userId
-  if (req.session && req.session.userId) {
-    console.log("✅ Session authentication successful for user ID:", req.session.userId);
+  // First, check if we have a session with userId (in either location)
+  let userId = req.session?.userId;
+  
+  if (!userId && req.session?.passport?.user) {
+    // Use passport's user ID if available
+    userId = req.session.passport.user;
+    console.log('Using userId from Passport:', userId);
+  }
+  
+  if (userId) {
+    console.log("✅ Session authentication successful for user ID:", userId);
     
     // Set user object based on session data
     req.user = {
-      id: req.session.userId,
+      id: userId,
       email: '', // These will be populated in validateUser if needed
       username: ''
     };
+    
+    // Make sure session has both forms of storage
+    req.session.userId = userId;
+    if (!req.session.passport) {
+      req.session.passport = { user: userId };
+    }
     
     return next();
   }
@@ -158,13 +175,41 @@ export function authenticateSession(req: Request, res: Response, next: NextFunct
   console.log('Session middleware called');
   console.log('Session object exists:', !!req.session);
   console.log('Full session data:', req.session);
+  console.log('Session ID:', req.sessionID);
+  console.log('Cookies:', req.headers.cookie);
   
-  // Check if session exists and if it has a userId property (properly typed with our SessionData extension)
-  if (req.session && req.session.userId) {
-    console.log('Session authentication successful for user ID:', req.session.userId);
+  // Check for userId in different potential locations:
+  // 1. Direct userId property in session (our custom storage)
+  // 2. Passport's user object in session
+  let userId = req.session?.userId;
+  
+  if (!userId && req.session?.passport?.user) {
+    // Use passport's user ID if available
+    userId = req.session.passport.user;
+    console.log('Using userId from Passport:', userId);
+  }
+  
+  if (userId) {
+    console.log('✅ Session authentication successful for user ID:', userId);
+    
+    // Set up req.user for consistency with token auth
+    req.user = {
+      id: userId,
+      email: '', // These will be populated by validateUser if needed
+      username: ''
+    };
+    
+    // Ensure session has both storage methods
+    req.session.userId = userId;
+    
+    // Also add to passport format if not present
+    if (!req.session.passport) {
+      req.session.passport = { user: userId };
+    }
+    
     next();
   } else {
-    console.log('Session authentication failed: No userId in session');
+    console.log('❌ Session authentication failed: No user ID found in any session storage');
     res.status(401).json({ message: 'Authentication required' });
   }
 }

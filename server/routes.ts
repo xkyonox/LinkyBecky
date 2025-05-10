@@ -489,28 +489,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get authenticated user from session (used for session-based auth)
   app.get("/api/auth/me-from-session", async (req, res) => {
     try {
-      console.log("🔍 GET /api/auth/me-from-session called");
-      console.log("Session:", req.session);
-      console.log("Cookies:", req.headers.cookie);
+      // Use our debug utility instead of manual logging
+      dumpRequestInfo(req, 'ME-FROM-SESSION ENDPOINT');
       
-      // Check if we have a userId in the session
-      if (!req.session?.userId) {
-        console.log("❌ No userId in session");
+      // Check if we have a userId in:
+      // 1. Session directly
+      // 2. Session.passport.user (Passport.js standard)
+      let userId = req.session?.userId;
+      
+      if (!userId && req.session?.passport?.user) {
+        userId = req.session.passport.user;
+        console.log(`ℹ️ Using userId from passport: ${userId}`);
+      }
+      
+      if (!userId) {
+        console.error("❌ No userId in session - direct or passport");
         return res.status(401).json({ message: "Not authenticated" });
       }
       
-      // Get user from database
-      const userId = req.session.userId;
-      console.log(`✅ Found userId ${userId} in session`);
+      console.log(`✅ Found userId in session: ${userId}`);
       
+      // Get user from database
       const user = await storage.getUser(userId);
       
       if (!user) {
-        console.log(`❌ User with id ${userId} not found in database`);
+        console.error(`❌ User with ID ${userId} not found in database`);
         return res.status(404).json({ message: "User not found" });
       }
       
       console.log(`✅ Retrieved user: ${user.username} (ID: ${user.id})`);
+      
+      // Now that we have verified the user, save it properly in the session (both ways)
+      req.session.userId = user.id;
+      if (!req.session.passport) {
+        req.session.passport = { user: user.id };
+      }
+      
+      // Save session with verified user before continuing
+      req.session.save((err) => {
+        if (err) {
+          console.error("❌ Error saving session:", err);
+        } else {
+          console.log("✅ Session saved successfully with verified user ID");
+        }
+      });
       
       // Generate a fresh token for the frontend
       const token = generateToken({
