@@ -747,6 +747,444 @@ app.use((req, res, next) => {
           }
         }
         
+        // Link management endpoints
+        // GET all links for the authenticated user
+        if (req.method === 'GET' && apiPath === '/links') {
+          try {
+            // Get authenticated user from token or session
+            const tokenUser = getUserFromToken(req);
+            const sessionUserId = req.session?.userId || req.session?.passport?.user;
+            
+            let userId: number | null = null;
+            
+            if (tokenUser) {
+              userId = tokenUser.id;
+            } else if (sessionUserId) {
+              userId = sessionUserId;
+            }
+            
+            if (!userId) {
+              return res.status(401).json({ 
+                error: 'Authentication required', 
+                message: 'Valid authentication required'
+              });
+            }
+            
+            // Get links from database, ordered by position
+            const linksResult = await db.execute(sql`
+              SELECT id, title, url, short_url AS "shortUrl", description, 
+                     icon_type AS "iconType", position, enabled, 
+                     utm_source AS "utmSource", utm_medium AS "utmMedium", 
+                     utm_campaign AS "utmCampaign", utm_term AS "utmTerm", 
+                     utm_content AS "utmContent", 
+                     created_at AS "createdAt", updated_at AS "updatedAt"
+              FROM links
+              WHERE user_id = ${userId}
+              ORDER BY position ASC
+            `);
+            
+            // Return links (empty array if none)
+            return res.json(linksResult.rows || []);
+          } catch (error) {
+            console.error("Error fetching links:", error);
+            return res.status(500).json({ 
+              error: 'Server error', 
+              message: 'Failed to fetch links'
+            });
+          }
+        }
+        
+        // Create a new link
+        if (req.method === 'POST' && apiPath === '/links') {
+          try {
+            // Get authenticated user from token or session
+            const tokenUser = getUserFromToken(req);
+            const sessionUserId = req.session?.userId || req.session?.passport?.user;
+            
+            let userId: number | null = null;
+            
+            if (tokenUser) {
+              userId = tokenUser.id;
+            } else if (sessionUserId) {
+              userId = sessionUserId;
+            }
+            
+            if (!userId) {
+              console.error("Failed to create link: No authenticated user");
+              return res.status(401).json({ 
+                error: 'Authentication required', 
+                message: 'Valid authentication required'
+              });
+            }
+            
+            // Validate request body (basic validation)
+            const { title, url, description, iconType, utmSource, utmMedium, utmCampaign, utmTerm, utmContent } = req.body;
+            
+            if (!title || !url) {
+              console.error("Failed to create link: Missing required fields", req.body);
+              return res.status(400).json({ 
+                error: 'Invalid request', 
+                message: 'Title and URL are required'
+              });
+            }
+            
+            // Get the highest position for existing links
+            const positionResult = await db.execute(sql`
+              SELECT COALESCE(MAX(position), 0) AS max_position
+              FROM links
+              WHERE user_id = ${userId}
+            `);
+            
+            const maxPosition = positionResult.rows && positionResult.rows[0] ? 
+                Number(positionResult.rows[0].max_position) || 0 : 0;
+            
+            // Import the LinkyVicky API utilities to shorten the URL
+            const { shortenUrl } = await import("./utils/linkyVicky");
+            
+            // Create short URL using LinkyVicky API
+            let shortUrl = null;
+            try {
+              console.log("Shortening URL:", url);
+              const shortenedUrl = await shortenUrl(url);
+              shortUrl = shortenedUrl.shortUrl;
+              console.log("Successfully shortened URL:", shortUrl);
+            } catch (apiError) {
+              console.error("Error shortening URL with LinkyVicky API:", apiError);
+              // Continue without short URL if API fails
+            }
+            
+            // Create link in database
+            const insertResult = await db.execute(sql`
+              INSERT INTO links (
+                user_id, title, url, short_url, description, icon_type, 
+                position, enabled, utm_source, utm_medium, utm_campaign, utm_term, utm_content
+              ) VALUES (
+                ${userId}, ${title}, ${url}, ${shortUrl}, ${description || null}, ${iconType || 'default'}, 
+                ${maxPosition + 1}, ${true}, ${utmSource || null}, ${utmMedium || null}, 
+                ${utmCampaign || null}, ${utmTerm || null}, ${utmContent || null}
+              ) RETURNING id, title, url, short_url AS "shortUrl", description, 
+                icon_type AS "iconType", position, enabled, 
+                utm_source AS "utmSource", utm_medium AS "utmMedium", 
+                utm_campaign AS "utmCampaign", utm_term AS "utmTerm", 
+                utm_content AS "utmContent", created_at AS "createdAt", updated_at AS "updatedAt"
+            `);
+            
+            if (!insertResult.rows || insertResult.rows.length === 0) {
+              console.error("Failed to create link: No rows returned from insert");
+              return res.status(500).json({ 
+                error: 'Database error', 
+                message: 'Failed to create link'
+              });
+            }
+            
+            // Return created link
+            return res.status(201).json(insertResult.rows[0]);
+          } catch (error) {
+            console.error("Error creating link:", error);
+            return res.status(500).json({ 
+              error: 'Server error', 
+              message: 'Failed to create link'
+            });
+          }
+        }
+        
+        // Update link
+        if (req.method === 'PUT' && apiPath.startsWith('/links/') && apiPath.split('/').length === 3) {
+          try {
+            // Extract link ID from path
+            const linkId = apiPath.split('/')[2];
+            
+            if (!linkId || !/^\d+$/.test(linkId)) {
+              return res.status(400).json({ 
+                error: 'Invalid request', 
+                message: 'Invalid link ID'
+              });
+            }
+            
+            // Get authenticated user from token or session
+            const tokenUser = getUserFromToken(req);
+            const sessionUserId = req.session?.userId || req.session?.passport?.user;
+            
+            let userId: number | null = null;
+            
+            if (tokenUser) {
+              userId = tokenUser.id;
+            } else if (sessionUserId) {
+              userId = sessionUserId;
+            }
+            
+            if (!userId) {
+              return res.status(401).json({ 
+                error: 'Authentication required', 
+                message: 'Valid authentication required'
+              });
+            }
+            
+            // Verify link belongs to user
+            const linkCheckResult = await db.execute(sql`
+              SELECT id FROM links WHERE id = ${linkId} AND user_id = ${userId}
+            `);
+            
+            if (!linkCheckResult.rows || linkCheckResult.rows.length === 0) {
+              return res.status(404).json({ 
+                error: 'Not found', 
+                message: 'Link not found or does not belong to you'
+              });
+            }
+            
+            // Validate request body fields
+            const { title, url, description, iconType, enabled, utmSource, utmMedium, utmCampaign, utmTerm, utmContent } = req.body;
+            
+            // Prepare SET parts for SQL
+            const updates = [];
+            const params = [];
+            
+            if (title !== undefined) {
+              updates.push(`title = $${params.length + 1}`);
+              params.push(title);
+            }
+            
+            if (url !== undefined) {
+              updates.push(`url = $${params.length + 1}`);
+              params.push(url);
+              
+              // If URL is being updated, update shortUrl as well
+              if (url) {
+                try {
+                  const { shortenUrl } = await import("./utils/linkyVicky");
+                  const shortenedUrl = await shortenUrl(url);
+                  updates.push(`short_url = $${params.length + 1}`);
+                  params.push(shortenedUrl.shortUrl);
+                } catch (apiError) {
+                  console.error("Error updating shortened URL:", apiError);
+                  // Continue without updating short URL
+                }
+              }
+            }
+            
+            if (description !== undefined) {
+              updates.push(`description = $${params.length + 1}`);
+              params.push(description);
+            }
+            
+            if (iconType !== undefined) {
+              updates.push(`icon_type = $${params.length + 1}`);
+              params.push(iconType);
+            }
+            
+            if (enabled !== undefined) {
+              updates.push(`enabled = $${params.length + 1}`);
+              params.push(enabled);
+            }
+            
+            if (utmSource !== undefined) {
+              updates.push(`utm_source = $${params.length + 1}`);
+              params.push(utmSource);
+            }
+            
+            if (utmMedium !== undefined) {
+              updates.push(`utm_medium = $${params.length + 1}`);
+              params.push(utmMedium);
+            }
+            
+            if (utmCampaign !== undefined) {
+              updates.push(`utm_campaign = $${params.length + 1}`);
+              params.push(utmCampaign);
+            }
+            
+            if (utmTerm !== undefined) {
+              updates.push(`utm_term = $${params.length + 1}`);
+              params.push(utmTerm);
+            }
+            
+            if (utmContent !== undefined) {
+              updates.push(`utm_content = $${params.length + 1}`);
+              params.push(utmContent);
+            }
+            
+            // Add updated_at timestamp
+            updates.push(`updated_at = $${params.length + 1}`);
+            params.push(new Date());
+            
+            // Update link if there are valid fields to update
+            if (updates.length === 0) {
+              return res.status(400).json({
+                error: 'Invalid request',
+                message: 'No valid fields to update'
+              });
+            }
+            
+            // Build and execute update query
+            const updateSql = `
+              UPDATE links 
+              SET ${updates.join(', ')}
+              WHERE id = $${params.length + 1} AND user_id = $${params.length + 2}
+              RETURNING id, title, url, short_url AS "shortUrl", description, 
+                icon_type AS "iconType", position, enabled, 
+                utm_source AS "utmSource", utm_medium AS "utmMedium", 
+                utm_campaign AS "utmCampaign", utm_term AS "utmTerm", 
+                utm_content AS "utmContent", created_at AS "createdAt", updated_at AS "updatedAt"
+            `;
+            
+            params.push(linkId);
+            params.push(userId);
+            
+            const updateResult = await db.query(updateSql, params);
+            
+            if (!updateResult.rows || updateResult.rows.length === 0) {
+              return res.status(404).json({
+                error: 'Not found',
+                message: 'Link not found or not updated'
+              });
+            }
+            
+            return res.json(updateResult.rows[0]);
+          } catch (error) {
+            console.error("Error updating link:", error);
+            return res.status(500).json({ 
+              error: 'Server error', 
+              message: 'Failed to update link'
+            });
+          }
+        }
+        
+        // Delete link
+        if (req.method === 'DELETE' && apiPath.startsWith('/links/') && apiPath.split('/').length === 3) {
+          try {
+            // Extract link ID from path
+            const linkId = apiPath.split('/')[2];
+            
+            if (!linkId || !/^\d+$/.test(linkId)) {
+              return res.status(400).json({ 
+                error: 'Invalid request', 
+                message: 'Invalid link ID'
+              });
+            }
+            
+            // Get authenticated user from token or session
+            const tokenUser = getUserFromToken(req);
+            const sessionUserId = req.session?.userId || req.session?.passport?.user;
+            
+            let userId: number | null = null;
+            
+            if (tokenUser) {
+              userId = tokenUser.id;
+            } else if (sessionUserId) {
+              userId = sessionUserId;
+            }
+            
+            if (!userId) {
+              return res.status(401).json({ 
+                error: 'Authentication required', 
+                message: 'Valid authentication required'
+              });
+            }
+            
+            // Verify link belongs to user
+            const linkCheckResult = await db.execute(sql`
+              SELECT id, position FROM links WHERE id = ${linkId} AND user_id = ${userId}
+            `);
+            
+            if (!linkCheckResult.rows || linkCheckResult.rows.length === 0) {
+              return res.status(404).json({ 
+                error: 'Not found', 
+                message: 'Link not found or does not belong to you'
+              });
+            }
+            
+            // Delete link
+            await db.execute(sql`
+              DELETE FROM links WHERE id = ${linkId} AND user_id = ${userId}
+            `);
+            
+            // Reorder remaining links to ensure positions are consecutive
+            const deletedPosition = linkCheckResult.rows[0].position;
+            
+            await db.execute(sql`
+              UPDATE links
+              SET position = position - 1
+              WHERE user_id = ${userId} AND position > ${deletedPosition}
+            `);
+            
+            return res.json({ success: true });
+          } catch (error) {
+            console.error("Error deleting link:", error);
+            return res.status(500).json({ 
+              error: 'Server error', 
+              message: 'Failed to delete link'
+            });
+          }
+        }
+        
+        // Update link positions (reordering)
+        if (req.method === 'POST' && apiPath === '/links/positions') {
+          try {
+            // Get authenticated user from token or session
+            const tokenUser = getUserFromToken(req);
+            const sessionUserId = req.session?.userId || req.session?.passport?.user;
+            
+            let userId: number | null = null;
+            
+            if (tokenUser) {
+              userId = tokenUser.id;
+            } else if (sessionUserId) {
+              userId = sessionUserId;
+            }
+            
+            if (!userId) {
+              return res.status(401).json({ 
+                error: 'Authentication required', 
+                message: 'Valid authentication required'
+              });
+            }
+            
+            // Validate request body
+            const { positions } = req.body;
+            
+            if (!positions || !Array.isArray(positions)) {
+              return res.status(400).json({ 
+                error: 'Invalid request', 
+                message: 'Positions array is required'
+              });
+            }
+            
+            // Update each link position
+            for (const { id, position } of positions) {
+              // Validate position data
+              if (!id || !Number.isInteger(position) || position < 0) {
+                continue;
+              }
+              
+              // Update position for this link
+              await db.execute(sql`
+                UPDATE links
+                SET position = ${position}, updated_at = NOW()
+                WHERE id = ${id} AND user_id = ${userId}
+              `);
+            }
+            
+            // Get updated links
+            const updatedLinksResult = await db.execute(sql`
+              SELECT id, title, url, short_url AS "shortUrl", description, 
+                     icon_type AS "iconType", position, enabled, 
+                     utm_source AS "utmSource", utm_medium AS "utmMedium", 
+                     utm_campaign AS "utmCampaign", utm_term AS "utmTerm", 
+                     utm_content AS "utmContent", created_at AS "createdAt", updated_at AS "updatedAt"
+              FROM links
+              WHERE user_id = ${userId}
+              ORDER BY position ASC
+            `);
+            
+            return res.json(updatedLinksResult.rows || []);
+          } catch (error) {
+            console.error("Error updating link positions:", error);
+            return res.status(500).json({ 
+              error: 'Server error', 
+              message: 'Failed to update link positions'
+            });
+          }
+        }
+        
         // If no handler matched, return a 404
         return res.status(404).json({ 
           error: 'API endpoint not found',

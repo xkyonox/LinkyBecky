@@ -2,7 +2,12 @@ import axios from 'axios';
 
 // LinkyVicky API base URL
 const LINKYVICKY_API_URL = process.env.LINKYVICKY_API_URL || 'https://api.linkyvicky.com';
-const LINKYVICKY_API_TOKEN = process.env.LINKYVICKY_API_TOKEN || '';
+const LINKYVICKY_API_KEY = process.env.LINKYVICKY_API_KEY || '';
+
+// Debug API connection issues
+console.log("LinkyVicky API Configuration:");
+console.log("API URL:", LINKYVICKY_API_URL);
+console.log("API KEY:", LINKYVICKY_API_KEY ? "Available" : "Missing");
 
 // Interface for shortened URL response
 interface ShortenedUrlResponse {
