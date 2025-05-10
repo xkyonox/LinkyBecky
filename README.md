@@ -35,6 +35,7 @@ LinkyBecky는 Linktree에서 영감을 받은 풀스택, 모바일 우선 링크
    GOOGLE_CLIENT_ID=your_google_client_id
    GOOGLE_CLIENT_SECRET=your_google_secret
    LINKYVICKY_API_TOKEN=your_linkyvicky_api_token
+   LINKYVICKY_API_URL=https://api.linkyvicky.com
    SESSION_SECRET=your_session_secret
    ```
 
