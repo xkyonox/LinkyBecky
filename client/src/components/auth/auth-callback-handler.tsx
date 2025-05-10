@@ -47,29 +47,97 @@ export function AuthCallbackHandler() {
               
               if (data.user && data.token) {
                 // Store the token and user info in the auth store
-                console.log('Setting auth with user and token');
-                setAuth(data.user, data.token);
+                console.log('Setting auth with user and token:', data.token ? 'Token present (not shown)' : 'Token missing!');
                 
-                // Now that we have the token stored in the auth store, subsequent calls
+                // Store token directly in localStorage as well for immediate use
+                try {
+                  // First set it in the auth store through the proper API
+                  setAuth(data.user, data.token);
+                  
+                  // Then verify it was stored correctly by checking localStorage directly
+                  setTimeout(() => {
+                    const authStorageRaw = localStorage.getItem('auth-storage');
+                    if (authStorageRaw) {
+                      try {
+                        const authStorage = JSON.parse(authStorageRaw);
+                        const storedToken = authStorage?.state?.token;
+                        console.log('Verification - token in localStorage:', storedToken ? 'Present' : 'Missing!');
+                        
+                        if (!storedToken) {
+                          console.error('Token was not properly stored in localStorage!');
+                          // As a fallback, manually store it
+                          const manualStorage = {
+                            state: {
+                              user: data.user,
+                              token: data.token,
+                              isAuthenticated: true
+                            },
+                            version: 0
+                          };
+                          localStorage.setItem('auth-storage', JSON.stringify(manualStorage));
+                          console.log('Manually stored token in localStorage as fallback');
+                        }
+                      } catch (e) {
+                        console.error('Error parsing auth storage during verification:', e);
+                      }
+                    } else {
+                      console.error('auth-storage not found in localStorage after setAuth!');
+                      // Create it manually as fallback
+                      const manualStorage = {
+                        state: {
+                          user: data.user,
+                          token: data.token,
+                          isAuthenticated: true
+                        },
+                        version: 0
+                      };
+                      localStorage.setItem('auth-storage', JSON.stringify(manualStorage));
+                      console.log('Created auth-storage in localStorage manually');
+                    }
+                  }, 100);
+                } catch (e) {
+                  console.error('Error setting auth:', e);
+                }
+                
+                // Now that we have the token stored, subsequent calls
                 // using apiRequest will include the Authorization header
                 
                 // ✅ 2. Check if this is a new user and create profile if needed
                 try {
+                  // Wait a bit to ensure token is fully saved before making profile API call
+                  await new Promise(resolve => setTimeout(resolve, 300));
+                  
                   console.log('Checking if profile exists...');
-                  // Try to get existing profile - this will now use the token from auth store
-                  const profileResponse = await apiRequest('GET', '/api/profile');
+                  
+                  // Create direct fetch call with the token for profile check
+                  const profileResponse = await fetch('/api/profile', {
+                    method: 'GET',
+                    headers: {
+                      'Authorization': `Bearer ${data.token}`
+                    },
+                    credentials: 'include'
+                  });
                   
                   // If profile doesn't exist (404), create a new one
                   if (!profileResponse.ok && profileResponse.status === 404) {
                     console.log('Creating new profile for user with username:', username);
                     
-                    // Create default profile with purple background color
-                    const createProfileResponse = await apiRequest('PUT', '/api/profile', {
-                      theme: 'default',
-                      backgroundColor: '#7c3aed', // Purple default
-                      textColor: '#ffffff',
-                      fontFamily: 'Inter',
-                      socialLinks: []
+                    // Create default profile with purple background color using direct fetch
+                    console.log('Creating profile with direct fetch and token in header');
+                    const createProfileResponse = await fetch('/api/profile', {
+                      method: 'PUT',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${data.token}`
+                      },
+                      body: JSON.stringify({
+                        theme: 'default',
+                        backgroundColor: '#7c3aed', // Purple default
+                        textColor: '#ffffff',
+                        fontFamily: 'Inter',
+                        socialLinks: []
+                      }),
+                      credentials: 'include'
                     });
                     
                     // ✅ Improved error handling for profile creation
