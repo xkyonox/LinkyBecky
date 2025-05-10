@@ -51,15 +51,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
         async (accessToken, refreshToken, profile, done) => {
           try {
+            // Check if user exists by Google ID
             let user = await storage.getUserByGoogleId(profile.id);
             
+            // If not found by Google ID, check by email
+            const email = profile.emails?.[0]?.value || "";
+            if (!user && email) {
+              user = await storage.getUserByEmail(email);
+              
+              // If user exists with this email but no Google ID, update with Google ID
+              if (user) {
+                user = await storage.updateUser(user.id, {
+                  googleId: profile.id,
+                  avatar: profile.photos?.[0]?.value || user.avatar
+                });
+              }
+            }
+            
+            // If still no user, create a new one
             if (!user) {
               // Create new user if not exists
               const username = `${profile.displayName.toLowerCase().replace(/\s+/g, ".")}_${Math.floor(Math.random() * 1000)}`;
               
               user = await storage.createUser({
                 username,
-                email: profile.emails?.[0]?.value || "",
+                email,
                 name: profile.displayName,
                 googleId: profile.id,
                 avatar: profile.photos?.[0]?.value,
